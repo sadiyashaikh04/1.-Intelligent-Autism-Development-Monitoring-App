@@ -4,7 +4,7 @@
 
 **Goal:** Stand up the IADM backend skeleton — a running Elysia server with validated config, structured logging, a typed error hierarchy, the complete 22-model Prisma schema migrated into Postgres, and a seed producing 10 residents across the status machine.
 
-**Architecture:** A Bun + Elysia API layered `routes → services → repos → Prisma`, with cross-cutting concerns (config, logger, errors) in `src/common/` and external systems behind `src/adapters/`. Phase 0 builds only the foundation layer plus one route (`/healthz`); no domain endpoints yet. Postgres runs in Docker Compose so the whole team gets an identical database.
+**Architecture:** A Bun + Elysia API layered `routes → services → repos → Prisma`, with cross-cutting concerns (config, logger, errors) in `src/common/` and external systems behind `src/adapters/`. Phase 0 builds only the foundation layer plus one route (`/healthz`); no domain endpoints yet. Postgres is the machine's existing local PostgreSQL 17 server; containerisation was deferred (Task 1).
 
 **Tech Stack:** Bun 1.3, Elysia 1.4, Prisma 7.9 + PostgreSQL 16, Zod 4.4, Pino 10, TypeScript 5.9.
 
@@ -26,7 +26,8 @@ Every task's requirements implicitly include this section.
 - **Naming follows IAC.** UUID primary keys via `dbgenerated("gen_random_uuid()")` mapped to `<entity>_id`; camelCase Prisma fields with `@map("snake_case")`; plural snake_case table names via `@@map`; timestamps `@db.Timestamptz(6)`.
 - **Commits carry no `Co-Authored-By` trailer.** Authorship on this repo is assessed.
 - **The `iac/` directory is never committed.** It sits outside this repo; run `git status` before every commit and confirm no `iac` paths appear.
-- **Ports:** Postgres container `5433` (host `5432` is taken by a local Homebrew Postgres), backend `5000`.
+- **Ports:** Postgres `5432` (the existing local Homebrew server), backend `5000`.
+- **Database is the local Homebrew PostgreSQL 17**, not a container. Docker Compose was deferred on 2026-08-04 — see the note in Task 1.
 - **All data is synthetic.** No real clinical records enter this repo, ever.
 
 ---
@@ -36,9 +37,9 @@ Every task's requirements implicitly include this section.
 Before Task 1, confirm each of these. If any fails, stop and fix it — later tasks assume all four.
 
 ```bash
-bun --version            # expect 1.3.x
-docker info              # must succeed — start Docker Desktop if it errors
-docker compose version   # expect v2+
+bun --version              # expect 1.3.x
+pg_isready                 # expect "accepting connections" on port 5432
+psql --version             # expect 15 or newer (gen_random_uuid is built in)
 git -C . config user.name  # expect sadiyashaikh04, NOT murtazrootlex
 ```
 
@@ -46,11 +47,10 @@ git -C . config user.name  # expect sadiyashaikh04, NOT murtazrootlex
 
 ## File Structure
 
-Everything in this phase lives under `backend/`, except `docker-compose.yml` at the repo root.
+Everything in this phase lives under `backend/`.
 
 | File | Responsibility |
 |---|---|
-| `docker-compose.yml` | Postgres 16 on host port 5433, named volume for persistence |
 | `backend/package.json` | Dependencies and the `dev` / `check` / `db:*` scripts |
 | `backend/tsconfig.json` | Strict TypeScript, `@/*` path alias |
 | `backend/eslint.config.js` | Lint rules |
@@ -75,78 +75,107 @@ Tests mirror source paths under `backend/tests/`.
 
 ---
 
-## Task 1: Postgres via Docker Compose
+## Task 1: Local PostgreSQL database and environment files — ✅ DONE (2026-08-04)
+
+> **Decision, 2026-08-04:** Docker Compose was deferred. The machine already
+> runs Homebrew PostgreSQL 17.9 on port 5432, so Phase 0 uses that directly
+> rather than adding a container dependency. Nothing in later tasks depends
+> on *how* Postgres is provided — only on `DATABASE_URL` — so switching to
+> Docker later means changing one env var and adding a compose file.
+>
+> The trade-off to revisit before teammates join: a container gives everyone
+> a byte-identical database, whereas local installs drift in version and
+> configuration. Worth doing when the team grows past one machine.
 
 **Files:**
-- Create: `docker-compose.yml`
 - Create: `backend/env/.env.example`
-- Create: `backend/env/.env.local`
+- Create: `backend/env/.env.local` (gitignored)
 
 **Interfaces:**
 - Consumes: nothing
-- Produces: a Postgres 16 database reachable at `postgresql://iadm:iadm_dev_password@localhost:5433/iadm?schema=public`, and the env var name `DATABASE_URL` that every later task reads via config.
+- Produces: a PostgreSQL database reachable at
+  `postgresql://iadm:iadm_dev_password@localhost:5432/iadm?schema=public`,
+  and the env var name `DATABASE_URL` that every later task reads via config.
 
-- [ ] **Step 1: Write the compose file**
-
-Create `docker-compose.yml` at the repo root:
-
-```yaml
-services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: iadm-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: iadm
-      POSTGRES_PASSWORD: iadm_dev_password
-      POSTGRES_DB: iadm
-    ports:
-      # Host 5433, not 5432 — a local Homebrew Postgres already owns 5432.
-      - "5433:5432"
-    volumes:
-      - iadm_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U iadm -d iadm"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-volumes:
-  iadm_pgdata:
-```
-
-- [ ] **Step 2: Start it and wait for healthy**
+- [x] **Step 1: Confirm the local server is running**
 
 ```bash
-docker compose up -d
-docker compose ps
+pg_isready
+psql -d postgres -tAc "SELECT version();"
 ```
 
-Expected: `iadm-postgres` listed with status `Up` and `(healthy)`. If it shows `(health: starting)`, wait 10 seconds and re-run.
+Expected: `accepting connections`, and PostgreSQL 15 or newer. Version
+matters — `gen_random_uuid()` is built in from 13, and the schema uses it
+for every primary key.
 
-- [ ] **Step 3: Verify the database accepts connections**
+- [x] **Step 2: Create a dedicated role and database**
+
+A separate role keeps this project isolated from other local databases and
+makes the connection string match what a deployed environment would use.
 
 ```bash
-docker compose exec postgres psql -U iadm -d iadm -c "SELECT version();"
+psql -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'iadm') THEN
+    CREATE ROLE iadm LOGIN PASSWORD 'iadm_dev_password';
+  END IF;
+END
+$$;
+SQL
+
+psql -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='iadm'" \
+  | grep -q 1 || createdb -O iadm iadm
 ```
 
-Expected: a `PostgreSQL 16.x` version string. If this fails with "database does not exist", the volume was created by an earlier run with different settings — run `docker compose down -v` and repeat Step 2.
+Both commands are idempotent, so re-running them is safe.
 
-- [ ] **Step 4: Verify `gen_random_uuid()` is available**
+- [x] **Step 3: Verify the role can connect over TCP with its password**
 
-The schema depends on it for every primary key. It is built into PostgreSQL 13+, so no extension is needed — this step proves it.
+Connecting as your superuser over a Unix socket proves nothing — Prisma
+connects over TCP as `iadm`.
 
 ```bash
-docker compose exec postgres psql -U iadm -d iadm -c "SELECT gen_random_uuid();"
+psql "postgresql://iadm:iadm_dev_password@localhost:5432/iadm" \
+  -tAc "SELECT current_user, current_database();"
 ```
 
-Expected: one UUID value.
+Expected: `iadm|iadm`.
 
-- [ ] **Step 5: Write the env template**
+- [x] **Step 4: Verify `gen_random_uuid()` and DDL privileges**
+
+On PostgreSQL 15+ the `public` schema is no longer writable by every role
+by default. If this fails, `prisma migrate` will fail later with a confusing
+permissions error — catch it here instead.
+
+```bash
+psql "postgresql://iadm:iadm_dev_password@localhost:5432/iadm" \
+  -v ON_ERROR_STOP=1 <<'SQL'
+CREATE TABLE _privilege_probe (id uuid DEFAULT gen_random_uuid());
+INSERT INTO _privilege_probe DEFAULT VALUES;
+SELECT count(*) AS rows_inserted FROM _privilege_probe;
+DROP TABLE _privilege_probe;
+SQL
+```
+
+Expected: `CREATE TABLE`, `INSERT 0 1`, `rows_inserted = 1`, `DROP TABLE`.
+
+If it fails with "permission denied for schema public", grant it:
+
+```bash
+psql -d iadm -c "GRANT ALL ON SCHEMA public TO iadm;"
+```
+
+- [x] **Step 5: Write the env template**
 
 Create `backend/env/.env.example`:
 
 ```bash
+# Copy to .env.local and adjust. .env.local is gitignored; this file is not.
+#
+# Prerequisite: a PostgreSQL 15+ server with a database and role named
+# `iadm`. See backend/README.md for the two commands that create them.
+
 # Runtime
 NODE_ENV=development
 PORT=5000
@@ -156,8 +185,8 @@ HOST=0.0.0.0
 SERVICE_NAME=iadm-backend
 SERVICE_VERSION=0.1.0
 
-# Database — port 5433, see docker-compose.yml
-DATABASE_URL=postgresql://iadm:iadm_dev_password@localhost:5433/iadm?schema=public
+# Database — local PostgreSQL on the default port
+DATABASE_URL=postgresql://iadm:iadm_dev_password@localhost:5432/iadm?schema=public
 
 # Auth (used from Phase 1; must be present from Phase 0 so config validates)
 JWT_SECRET=change_me_local_dev_secret_at_least_32_chars
@@ -172,28 +201,27 @@ LOG_FORMAT=pretty
 CORS_ORIGIN=http://localhost:3000
 ```
 
-- [ ] **Step 6: Create the real local env file**
+- [x] **Step 6: Create the real local env file and prove the ignore rules work**
 
 ```bash
 cp backend/env/.env.example backend/env/.env.local
 ```
 
-`.env.local` is gitignored (`.env.*` with a `!.env.*.example` negation). Confirm:
+Verify with `git add --dry-run` rather than `git check-ignore`, because
+`check-ignore -v` prints the matching rule even when that rule is a
+negation, which reads as a false positive:
 
 ```bash
-git check-ignore -v backend/env/.env.local   # expect a match line
-git check-ignore -v backend/env/.env.example  # expect NO output (exit 1)
+git add --dry-run backend/env/.env.example   # expect: add '...'
+git add --dry-run backend/env/.env.local     # expect: "paths are ignored"
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git status --short          # confirm no 'iac' paths and no .env.local
-git add docker-compose.yml backend/env/.env.example
-git commit -m "chore: add postgres via docker compose and env template
-
-Postgres 16 on host port 5433 to avoid the local Homebrew Postgres
-already bound to 5432. Named volume so data survives restarts."
+git add backend/env/.env.example
+git commit -m "chore: add backend env template targeting local postgres"
 ```
 
 ---
@@ -410,7 +438,7 @@ import { buildConfig } from "@/config/configs";
 import { NodeEnv } from "@/common/config.types";
 
 const validEnv = {
-  DATABASE_URL: "postgresql://iadm:pw@localhost:5433/iadm?schema=public",
+  DATABASE_URL: "postgresql://iadm:pw@localhost:5432/iadm?schema=public",
   JWT_SECRET: "a".repeat(32),
 };
 
@@ -1147,7 +1175,7 @@ export default defineConfig({
   datasource: {
     url:
       process.env.DATABASE_URL ||
-      "postgresql://iadm:iadm_dev_password@localhost:5433/iadm?schema=public",
+      "postgresql://iadm:iadm_dev_password@localhost:5432/iadm?schema=public",
   },
 });
 ```
@@ -2159,18 +2187,18 @@ bunx prisma migrate dev --name init
 
 Expected: a new folder `prisma/migrations/<timestamp>_init/` containing `migration.sql`, and `Your database is now in sync with your schema.`
 
-If this errors with "can't reach database server", Docker isn't running — `docker compose up -d` from the repo root, then retry.
+If this errors with "can't reach database server", the local Postgres is not running — `brew services start postgresql@17`, then retry.
 
 - [ ] **Step 2: Verify all 22 tables landed**
 
 ```bash
-cd .. && docker compose exec postgres psql -U iadm -d iadm -c "\dt"
+psql "postgresql://iadm:iadm_dev_password@localhost:5432/iadm" -c "\dt"
 ```
 
 Expected: 22 tables plus `_prisma_migrations`. Confirm the count:
 
 ```bash
-docker compose exec postgres psql -U iadm -d iadm -tAc \
+psql "postgresql://iadm:iadm_dev_password@localhost:5432/iadm" -tAc \
   "SELECT count(*) FROM information_schema.tables
    WHERE table_schema='public' AND table_name <> '_prisma_migrations';"
 ```
@@ -3031,7 +3059,7 @@ Expected: lint, format check, and typecheck all pass, exit 0.
 bun dev &
 sleep 3
 curl -s -o /dev/null -w "healthz: %{http_code}\n" http://localhost:5000/healthz
-cd .. && docker compose exec postgres psql -U iadm -d iadm -tAc \
+psql "postgresql://iadm:iadm_dev_password@localhost:5432/iadm" -tAc \
   "SELECT count(*) FROM residents;"
 kill %1
 ```
@@ -3048,9 +3076,10 @@ Bun + Elysia + Prisma + PostgreSQL. See the
 
 ## Setup
 
-From the repository root, start Postgres:
+One-time database setup (local PostgreSQL 15+ must be running):
 
-    docker compose up -d
+    psql -d postgres -c "CREATE ROLE iadm LOGIN PASSWORD 'iadm_dev_password';"
+    createdb -O iadm iadm
 
 Then, in this directory:
 
@@ -3094,8 +3123,8 @@ All seeded users share the password `Password123!`.
   A `no-restricted-globals` lint rule enforces this.
 - Import internals via the `@/*` alias, never `../../`.
 - Log with `LOGGER_EVENTS` constants for the `event` field.
-- Postgres runs on host port **5433** to avoid clashing with a local
-  Homebrew Postgres on 5432.
+- Postgres is the machine's local PostgreSQL 17 on port **5432**.
+  Containerising it was deferred — see Task 1 of the Phase 0 plan.
 ```
 
 - [ ] **Step 6: Update the root `README.md` status line**
@@ -3133,7 +3162,7 @@ teammate can go from clone to running server without asking."
 
 All must be true before starting Phase 1:
 
-- [ ] `docker compose ps` shows `iadm-postgres` healthy
+- [ ] `pg_isready` reports the local Postgres accepting connections on 5432
 - [ ] `bun run check` exits 0
 - [ ] `bun run --env-file=env/.env.local test` — all tests pass
 - [ ] `bun dev` starts and `GET /healthz` returns 200 with an `x-request-id` header
