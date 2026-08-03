@@ -1,0 +1,68 @@
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# ---- secrets / env ----
+.env
+.env.*
+!.env.example
+!.env.*.example
+env/.env.local
+*.pem
+*.key
+!**/public/**/*.key
+service-account*.json
+firebase-keys/
+
+# ---- node / bun (backend, web, parent-mobile) ----
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+coverage/
+.eslintcache
+
+# ---- next.js (web) ----
+web/.next/
+web/out/
+next-env.d.ts
+
+# ---- expo (parent-mobile) ----
+parent-mobile/.expo/
+parent-mobile/dist/
+parent-mobile/web-build/
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+*.orig.*
+
+# ---- python (ml-service) ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+.mypy_cache/
+.ruff_cache/
+
+# Trained artefacts are committed on purpose — the report references them.
+# Scratch experiments are not.
+ml-service/models/scratch/
+ml-service/**/*.log
+
+# ---- database / docker ----
+pgdata/
+*.sqlite
+*.db
+
+# ---- logs ----
+logs/
+*.log
+npm-debug.log*
+yarn-error.log*
