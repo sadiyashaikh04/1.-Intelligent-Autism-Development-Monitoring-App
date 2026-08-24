@@ -11,7 +11,7 @@
     "format": "prettier --write \"{src,tests,prisma}/**/*.{ts,json,md}\"",
     "format:check": "prettier --check \"{src,tests,prisma}/**/*.{ts,json,md}\"",
     "check": "bun run lint && bun run format:check && bun run typecheck",
-    "test": "bun test",
+    "test": "bun test --env-file=env/.env.local",
     "db:generate": "bunx prisma generate",
     "db:migrate:dev": "bunx prisma migrate dev",
     "db:migrate:deploy": "bunx prisma migrate deploy",
@@ -20,7 +20,8 @@
     "db:validate": "bunx prisma validate",
     "db:format": "bunx prisma format",
     "db:studio": "bunx prisma studio",
-    "db:setup": "bunx prisma generate && bunx prisma migrate dev && bun run db:seed"
+    "db:setup": "bunx prisma generate && bunx prisma migrate dev && bun run db:seed",
+    "test:watch": "bun test --env-file=env/.env.local --watch"
   },
   "dependencies": {
     "@elysiajs/cors": "^1.4.2",

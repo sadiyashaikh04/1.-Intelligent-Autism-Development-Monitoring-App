@@ -448,7 +448,7 @@ fails lint."
 
 ---
 
-## Task 3: Zod-validated config
+## Task 3: Zod-validated config — ✅ DONE (2026-08-04)
 
 **Files:**
 - Create: `backend/src/common/config.types.ts`
@@ -463,7 +463,7 @@ fails lint."
   - `config: AppConfig` (the singleton every other module imports) from `@/config/configs`
   - `AppConfig` shape: `{ env: NodeEnv; isProduction: boolean; server: { port: number; host: string }; service: { name: string; version: string }; database: { url: string }; jwt: { secret: string; accessTtl: string; refreshTtl: string }; log: { level: string; format: "json" | "pretty" }; cors: { origin: string } }`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `backend/tests/config/configs.test.ts`:
 
@@ -534,7 +534,15 @@ describe("buildConfig", () => {
 
 `buildConfig` takes the environment as an argument rather than reading `Bun.env` itself. That is what makes it testable — the singleton `config` is just `buildConfig(Bun.env)`.
 
-- [ ] **Step 2: Run the test to verify it fails**
+**The singleton is still eager, and that matters.** `export const config =
+buildConfig(Bun.env)` runs at import time, so a misconfigured process dies at
+startup rather than at the first request that happens to need the bad value.
+The cost is that merely *importing* the module throws when the environment is
+absent — which is why the `test` script passes `--env-file=env/.env.local`
+(added in Task 2). Making the singleton lazy would fix the import at the price
+of losing fail-fast; feeding the test runner an env file is the cheaper trade.
+
+- [x] **Step 2: Run the test to verify it fails**
 
 ```bash
 cd backend && bun test tests/config/configs.test.ts
@@ -542,7 +550,7 @@ cd backend && bun test tests/config/configs.test.ts
 
 Expected: FAIL — cannot resolve module `@/config/configs`.
 
-- [ ] **Step 3: Write `backend/src/common/config.types.ts`**
+- [x] **Step 3: Write `backend/src/common/config.types.ts`**
 
 ```typescript
 export enum NodeEnv {
@@ -555,7 +563,7 @@ export enum NodeEnv {
 
 This lives apart from `configs.ts` so the logger can import `NodeEnv` without importing config, which would create a cycle (config logs, logger reads config).
 
-- [ ] **Step 4: Write `backend/src/config/configs.ts`**
+- [x] **Step 4: Write `backend/src/config/configs.ts`**
 
 ```typescript
 import { z } from "zod";
@@ -641,7 +649,7 @@ export const config: AppConfig = buildConfig(Bun.env);
 
 Zod reports every failing field in one `issues` array, which is why the "reports every missing variable at once" test passes — a developer with three missing vars learns all three on the first run.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 ```bash
 cd backend && bun test tests/config/configs.test.ts
@@ -649,7 +657,7 @@ cd backend && bun test tests/config/configs.test.ts
 
 Expected: PASS, 7 tests.
 
-- [ ] **Step 6: Verify lint and typecheck still pass**
+- [x] **Step 6: Verify lint and typecheck still pass**
 
 ```bash
 bun run check
@@ -657,7 +665,7 @@ bun run check
 
 Expected: exit 0.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd ..
@@ -2328,10 +2336,10 @@ export async function disconnectPrisma(): Promise<void> {
 - [ ] **Step 6: Run the tests to verify they pass**
 
 ```bash
-cd backend && bun run --env-file=env/.env.local test tests/adapters/database/prisma.test.ts
+cd backend && bun run test tests/adapters/database/prisma.test.ts
 ```
 
-Expected: PASS, 3 tests. The `--env-file` flag is required — this test hits the real database, unlike the pure unit tests before it.
+Expected: PASS, 3 tests. The `test` script already passes `--env-file=env/.env.local`, so `bun run test` (not bare `bun test`) is what loads DATABASE_URL.
 
 - [ ] **Step 7: Commit**
 
@@ -2471,7 +2479,7 @@ describe("swagger", () => {
 - [ ] **Step 2: Run them to verify they fail**
 
 ```bash
-cd backend && bun run --env-file=env/.env.local test tests/app.test.ts
+cd backend && bun run test tests/app.test.ts
 ```
 
 Expected: FAIL — cannot resolve `@/app`.
@@ -2662,7 +2670,7 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
 - [ ] **Step 7: Run the tests to verify they pass**
 
 ```bash
-cd backend && bun run --env-file=env/.env.local test tests/app.test.ts tests/routes/health.routes.test.ts
+cd backend && bun run test tests/app.test.ts tests/routes/health.routes.test.ts
 ```
 
 Expected: PASS, 8 tests.
@@ -2807,7 +2815,7 @@ The idempotency test matters more than it looks: a seed that duplicates on secon
 - [ ] **Step 2: Run it to verify it fails**
 
 ```bash
-cd backend && bun run --env-file=env/.env.local test tests/prisma/seed.test.ts
+cd backend && bun run test tests/prisma/seed.test.ts
 ```
 
 Expected: FAIL — cannot resolve `../../prisma/seed`.
@@ -3020,7 +3028,7 @@ if (import.meta.main) {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 ```bash
-cd backend && bun run --env-file=env/.env.local test tests/prisma/seed.test.ts
+cd backend && bun run test tests/prisma/seed.test.ts
 ```
 
 Expected: PASS, 7 tests.
@@ -3075,7 +3083,7 @@ Expected: migration applied, then `seed complete` with `residents: 10`.
 - [ ] **Step 2: Run the entire test suite**
 
 ```bash
-bun run --env-file=env/.env.local test
+bun run test
 ```
 
 Expected: all tests pass across `config`, `logger`, `errors`, `prisma`, `app`, `health.routes`, `seed`.
@@ -3199,7 +3207,7 @@ All must be true before starting Phase 1:
 
 - [ ] `pg_isready` reports the local Postgres accepting connections on 5432
 - [ ] `bun run check` exits 0
-- [ ] `bun run --env-file=env/.env.local test` — all tests pass
+- [ ] `bun run test` — all tests pass
 - [ ] `bun dev` starts and `GET /healthz` returns 200 with an `x-request-id` header
 - [ ] `GET /swagger` serves the API docs
 - [ ] An unknown route returns `{"error":{"code":"NOT_FOUND",...}}`, not an HTML error page
