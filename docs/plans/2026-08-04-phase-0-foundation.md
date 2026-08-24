@@ -226,7 +226,7 @@ git commit -m "chore: add backend env template targeting local postgres"
 
 ---
 
-## Task 2: Backend project init, TypeScript, and tooling
+## Task 2: Backend project init, TypeScript, and tooling — ✅ DONE (2026-08-04)
 
 **Files:**
 - Create: `backend/package.json`, `backend/tsconfig.json`, `backend/eslint.config.js`, `backend/.prettierrc`, `backend/.prettierignore`
@@ -236,11 +236,17 @@ git commit -m "chore: add backend env template targeting local postgres"
 - Consumes: nothing
 - Produces: the `@/*` → `src/*` path alias every later task imports through; the scripts `bun run typecheck`, `bun run lint`, `bun run format:check`, `bun run check`, `bun test`.
 
-- [ ] **Step 1: Initialise and install dependencies**
+- [x] **Step 1: Initialise and install dependencies**
 
 ```bash
 cd backend
 bun init -y
+# bun init also writes .cursor/, CLAUDE.md, README.md, .gitignore and a root
+# index.ts. Delete all five: the root .gitignore already covers this tree,
+# backend/README.md is written properly in Task 12, and the entrypoint lives
+# at src/index.ts.
+rm -rf .cursor CLAUDE.md README.md .gitignore index.ts
+
 bun add elysia@^1.4.29 @elysiajs/swagger@^1.3.1 @elysiajs/cors@^1.4.2 \
         @prisma/client@^7.9.1 zod@^4.4.3 pino@^10.3.1 pino-pretty@^13.1.3
 bun add -d prisma@^7.9.1 typescript@^5.9.3 @types/bun@latest \
@@ -249,7 +255,7 @@ bun add -d prisma@^7.9.1 typescript@^5.9.3 @types/bun@latest \
 
 TypeScript is pinned to 5.9 rather than the newer 7.x, because the Prisma and ESLint toolchains are still settling against the native port and a college project should not be debugging its compiler.
 
-- [ ] **Step 2: Write `backend/tsconfig.json`**
+- [x] **Step 2: Write `backend/tsconfig.json`**
 
 ```json
 {
@@ -278,7 +284,7 @@ TypeScript is pinned to 5.9 rather than the newer 7.x, because the Prisma and ES
 }
 ```
 
-- [ ] **Step 3: Replace the `scripts` block in `backend/package.json`**
+- [x] **Step 3: Replace the `scripts` block in `backend/package.json`**
 
 ```json
 {
@@ -289,7 +295,7 @@ TypeScript is pinned to 5.9 rather than the newer 7.x, because the Prisma and ES
     "dev": "bun run --env-file=env/.env.local --watch src/index.ts",
     "start": "bun run --env-file=env/.env.local src/index.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src tests",
+    "lint": "eslint .",
     "format": "prettier --write \"{src,tests,prisma}/**/*.{ts,json,md}\"",
     "format:check": "prettier --check \"{src,tests,prisma}/**/*.{ts,json,md}\"",
     "check": "bun run lint && bun run format:check && bun run typecheck",
@@ -309,7 +315,17 @@ TypeScript is pinned to 5.9 rather than the newer 7.x, because the Prisma and ES
 
 Keep the `dependencies` and `devDependencies` blocks that `bun add` wrote.
 
-- [ ] **Step 4: Write `backend/eslint.config.js`**
+**Watch out:** `bun init` puts `typescript` under `peerDependencies`, so
+rewriting this file can silently drop it — a fresh clone then has no `tsc`
+and `bun run typecheck` fails for a teammate. After rewriting, confirm it is
+present as a devDependency, and re-add it if not:
+
+```bash
+python3 -c "import json;print('typescript' in json.load(open('package.json'))['devDependencies'])"
+# false → bun add -d typescript@^5.9.3
+```
+
+- [x] **Step 4: Write `backend/eslint.config.js`**
 
 ```javascript
 import js from "@eslint/js";
@@ -355,7 +371,7 @@ export default tseslint.config(
 
 The `no-restricted-properties` rule mechanically enforces the "config is centralised" constraint, so a violation fails lint instead of surviving to review. It targets `process.env` and `Bun.env` specifically rather than the `process` global, so `process.on("SIGTERM", ...)` in the entrypoint is still allowed.
 
-- [ ] **Step 5: Write `backend/.prettierrc` and `backend/.prettierignore`**
+- [x] **Step 5: Write `backend/.prettierrc` and `backend/.prettierignore`**
 
 `.prettierrc`:
 
@@ -377,7 +393,7 @@ prisma/migrations
 *.md
 ```
 
-- [ ] **Step 6: Write a placeholder entrypoint**
+- [x] **Step 6: Write a placeholder entrypoint**
 
 Create `backend/src/index.ts`:
 
@@ -385,7 +401,7 @@ Create `backend/src/index.ts`:
 console.log("iadm-backend: placeholder entrypoint, replaced in Task 10");
 ```
 
-- [ ] **Step 7: Verify the toolchain runs clean**
+- [x] **Step 7: Verify the toolchain runs clean**
 
 ```bash
 cd backend
@@ -394,9 +410,28 @@ bun run lint         # expect: no output, exit 0
 bun run format:check # expect: "All matched files use Prettier code style!"
 ```
 
+The lint script is `eslint .`, not `eslint src tests`: `tests/` does not exist
+until Task 3, and ESLint hard-errors on a path pattern that matches nothing.
+Linting the project root and letting `ignores` in the flat config exclude
+`node_modules/`, `dist/` and `prisma/migrations/` is both simpler and robust
+as directories come and go. Prettier tolerates non-matching globs, so its
+pattern is left alone.
+
+Then prove the env rule actually bites, rather than trusting the config:
+
+```bash
+printf 'const a = process.env.X;\nconst b = Bun.env.Y;\nconsole.log(a, b);\n' > src/_probe.ts
+bunx eslint src/_probe.ts   # expect 2 no-restricted-properties errors
+rm src/_probe.ts
+
+printf 'process.on("SIGTERM", () => {\n  console.log("bye");\n});\n' > src/_probe2.ts
+bunx eslint src/_probe2.ts  # expect 0 errors — process.on must stay legal
+rm src/_probe2.ts
+```
+
 If `format:check` fails, run `bun run format` and re-check.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 cd ..
