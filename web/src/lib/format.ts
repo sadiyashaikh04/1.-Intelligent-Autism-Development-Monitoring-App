@@ -26,6 +26,7 @@ const dateTimeFmt = new Intl.DateTimeFormat("en-IN", {
   minute: "2-digit",
 });
 const timeFmt = new Intl.DateTimeFormat("en-IN", { hour: "2-digit", minute: "2-digit" });
+const time24Fmt = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const weekdayFmt = new Intl.DateTimeFormat("en-IN", { weekday: "short", day: "numeric", month: "short" });
 
 /** Accepts "YYYY-MM-DD" (read as a local date) or a full ISO timestamp. */
@@ -36,6 +37,8 @@ function parse(value: string): Date {
 export const formatDate = (v: string | null) => (v ? dateFmt.format(parse(v)) : "—");
 export const formatDateTime = (v: string | null) => (v ? dateTimeFmt.format(parse(v)) : "—");
 export const formatTime = (v: string) => timeFmt.format(parse(v));
+/** Compact 24-hour time for dense schedule views. */
+export const formatTime24 = (v: string) => time24Fmt.format(parse(v));
 export const formatWeekday = (d: Date) => weekdayFmt.format(d);
 
 export function relativeTime(iso: string, now = new Date()): string {
