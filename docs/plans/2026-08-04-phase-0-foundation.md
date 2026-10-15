@@ -2305,7 +2305,11 @@ Create `backend/tests/adapters/database/prisma.test.ts`:
 
 ```typescript
 import { afterAll, describe, expect, it } from "bun:test";
-import { disconnectPrisma, prisma } from "@/adapters/database/prisma";
+import {
+  disconnectPrisma,
+  prisma,
+  schemaFromUrl,
+} from "@/adapters/database/prisma";
 
 afterAll(async () => {
   await disconnectPrisma();
@@ -2322,6 +2326,18 @@ describe("prisma adapter", () => {
   it("returns the same instance on repeated imports", async () => {
     const again = await import("@/adapters/database/prisma");
     expect(again.prisma).toBe(prisma);
+  });
+
+  // The pg driver ignores Prisma's `?schema=` URL parameter, so the
+  // adapter must read it and pass it on — otherwise a test pointed at a
+  // throwaway schema silently writes to `public`.
+  it("reads the target schema from the connection string", () => {
+    expect(
+      schemaFromUrl("postgresql://u:p@localhost:5432/iadm?schema=seedproof"),
+    ).toBe("seedproof");
+    expect(schemaFromUrl("postgresql://u:p@localhost:5432/iadm")).toBe(
+      undefined,
+    );
   });
 
   it("exposes every model the schema defines", () => {
@@ -2371,6 +2387,14 @@ import { LOGGER_EVENTS } from "@/common/loggerEvents";
  * Held on globalThis so `bun --watch` reloads reuse one connection pool
  * instead of leaking a new one on every file save.
  */
+/**
+ * `?schema=` is a Prisma CLI convention; the pg driver ignores it. The
+ * adapter takes the schema as an option instead, so it is read out here.
+ */
+export function schemaFromUrl(url: string): string | undefined {
+  return new URL(url).searchParams.get("schema") ?? undefined;
+}
+
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
@@ -2378,7 +2402,10 @@ const globalForPrisma = globalThis as unknown as {
 export const prisma: PrismaClient =
   globalForPrisma.prisma ??
   new PrismaClient({
-    adapter: new PrismaPg({ connectionString: config.database.url }),
+    adapter: new PrismaPg(
+      { connectionString: config.database.url },
+      { schema: schemaFromUrl(config.database.url) },
+    ),
     log: ["warn", "error"],
   });
 
@@ -2401,7 +2428,9 @@ export async function disconnectPrisma(): Promise<void> {
 cd backend && bun run test tests/adapters/database/prisma.test.ts
 ```
 
-Expected: PASS, 3 tests. The `test` script already passes `--env-file=env/.env.local`, so `bun run test` (not bare `bun test`) is what loads DATABASE_URL.
+Expected: PASS, 4 tests.
+
+> **Fix, 2026-10-15 (found in Task 11):** the pg driver ignores Prisma's `?schema=` URL parameter, so the app always used `public` whatever the URL said. `schemaFromUrl` reads it and passes it to `PrismaPg` as the `schema` option; the fourth test covers it. Without this, the spec §9.3 throwaway-schema test setup would silently write to the real data. The `test` script already passes `--env-file=env/.env.local`, so `bun run test` (not bare `bun test`) is what loads DATABASE_URL.
 
 - [x] **Step 7: Commit**
 
@@ -2777,7 +2806,7 @@ not touch the database so a Postgres blip cannot cause restart storms."
 
 ---
 
-## Task 11: Seed script
+## Task 11: Seed script — ✅ DONE (2026-10-15)
 
 **Files:**
 - Create: `backend/prisma/seed.ts`
@@ -2785,9 +2814,11 @@ not touch the database so a Postgres blip cannot cause restart storms."
 
 **Interfaces:**
 - Consumes: `prisma` from `@/adapters/database/prisma`.
-- Produces: a populated database matching spec §9.1 — 13 users, 8 assessment types, 12 ADL activities, 6 rooms, 10 residents distributed across the status machine. Exports `seed(): Promise<void>` so the test can invoke it directly.
+- Produces: a populated database matching spec §9.1 — 13 users, 8 assessment types, 12 ADL activities, 6 rooms, 10 residents distributed across the status machine. Exports `seed(): Promise<void>` so the test can invoke it directly. Each resident also gets one initial `ResidentStatusHistory` row (`null → status`, actor = admin).
 
-- [ ] **Step 1: Write the failing test**
+> **Ruling, 2026-10-15:** the original seed set `status` with no history row, contradicting spec §4.3 (every status is reached through a history row) and leaving Phase 2's history tab empty for every seeded resident. The row is nested in the upsert's `create` branch, so re-runs never duplicate it.
+
+- [x] **Step 1: Write the failing test**
 
 Create `backend/tests/prisma/seed.test.ts`:
 
@@ -2848,10 +2879,12 @@ describe("seed", () => {
   });
 
   it("splits ADL activities into 8 ADL and 4 IADL", async () => {
-    expect(await prisma.adlActivity.count({ where: { category: "ADL" } }))
-      .toBe(8);
-    expect(await prisma.adlActivity.count({ where: { category: "IADL" } }))
-      .toBe(4);
+    expect(await prisma.adlActivity.count({ where: { category: "ADL" } })).toBe(
+      8,
+    );
+    expect(
+      await prisma.adlActivity.count({ where: { category: "IADL" } }),
+    ).toBe(4);
   });
 
   it("never stores a plaintext password", async () => {
@@ -2864,17 +2897,34 @@ describe("seed", () => {
     }
   });
 
+  it("gives every resident an initial status-history row matching its status", async () => {
+    // Spec §4.3: every status is reached via a history row. A seeded
+    // resident must not appear to have arrived at its status from nowhere.
+    const residents = await prisma.resident.findMany({
+      select: {
+        status: true,
+        statusHistory: { select: { fromStatus: true, toStatus: true } },
+      },
+    });
+    for (const resident of residents) {
+      expect(resident.statusHistory).toHaveLength(1);
+      expect(resident.statusHistory[0]?.fromStatus).toBeNull();
+      expect(resident.statusHistory[0]?.toStatus).toBe(resident.status);
+    }
+  });
+
   it("is idempotent — running twice does not duplicate rows", async () => {
     await seed();
     expect(await prisma.resident.count()).toBe(10);
     expect(await prisma.user.count()).toBe(13);
+    expect(await prisma.residentStatusHistory.count()).toBe(10);
   });
 });
 ```
 
 The idempotency test matters more than it looks: a seed that duplicates on second run makes `db:setup` unsafe to re-run, and re-running it is exactly what everyone does before a demo.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 ```bash
 cd backend && bun run test tests/prisma/seed.test.ts
@@ -2882,7 +2932,7 @@ cd backend && bun run test tests/prisma/seed.test.ts
 
 Expected: FAIL — cannot resolve `../../prisma/seed`.
 
-- [ ] **Step 3: Write `backend/prisma/seed.ts`**
+- [x] **Step 3: Write `backend/prisma/seed.ts`**
 
 ```typescript
 import {
@@ -2917,24 +2967,92 @@ const USERS: Array<{
   role: UserRole;
   clinicalDomain?: ClinicalDomain;
 }> = [
-  { email: "admin@iadm.local", firstName: "Aisha", lastName: "Rahman", role: UserRole.SUPER_ADMIN },
+  {
+    email: "admin@iadm.local",
+    firstName: "Aisha",
+    lastName: "Rahman",
+    role: UserRole.SUPER_ADMIN,
+  },
 
-  { email: "csc1@iadm.local", firstName: "Priya", lastName: "Nair", role: UserRole.CSC },
-  { email: "csc2@iadm.local", firstName: "Rohan", lastName: "Mehta", role: UserRole.CSC },
+  {
+    email: "csc1@iadm.local",
+    firstName: "Priya",
+    lastName: "Nair",
+    role: UserRole.CSC,
+  },
+  {
+    email: "csc2@iadm.local",
+    firstName: "Rohan",
+    lastName: "Mehta",
+    role: UserRole.CSC,
+  },
 
-  { email: "psych1@iadm.local", firstName: "Sara", lastName: "Khan", role: UserRole.JR_PSYCHOLOGIST, clinicalDomain: ClinicalDomain.PSYCHOLOGY },
-  { email: "psych2@iadm.local", firstName: "Imran", lastName: "Sheikh", role: UserRole.JR_PSYCHOLOGIST, clinicalDomain: ClinicalDomain.SPEECH_THERAPY },
+  {
+    email: "psych1@iadm.local",
+    firstName: "Sara",
+    lastName: "Khan",
+    role: UserRole.JR_PSYCHOLOGIST,
+    clinicalDomain: ClinicalDomain.PSYCHOLOGY,
+  },
+  {
+    email: "psych2@iadm.local",
+    firstName: "Imran",
+    lastName: "Sheikh",
+    role: UserRole.JR_PSYCHOLOGIST,
+    clinicalDomain: ClinicalDomain.SPEECH_THERAPY,
+  },
 
-  { email: "mdthead@iadm.local", firstName: "Vikram", lastName: "Desai", role: UserRole.MDT_HEAD, clinicalDomain: ClinicalDomain.PSYCHOLOGY },
+  {
+    email: "mdthead@iadm.local",
+    firstName: "Vikram",
+    lastName: "Desai",
+    role: UserRole.MDT_HEAD,
+    clinicalDomain: ClinicalDomain.PSYCHOLOGY,
+  },
 
-  { email: "pss1@iadm.local", firstName: "Meera", lastName: "Joshi", role: UserRole.PSS },
-  { email: "pss2@iadm.local", firstName: "Arjun", lastName: "Patel", role: UserRole.PSS },
-  { email: "pss3@iadm.local", firstName: "Fatima", lastName: "Ali", role: UserRole.PSS },
+  {
+    email: "pss1@iadm.local",
+    firstName: "Meera",
+    lastName: "Joshi",
+    role: UserRole.PSS,
+  },
+  {
+    email: "pss2@iadm.local",
+    firstName: "Arjun",
+    lastName: "Patel",
+    role: UserRole.PSS,
+  },
+  {
+    email: "pss3@iadm.local",
+    firstName: "Fatima",
+    lastName: "Ali",
+    role: UserRole.PSS,
+  },
 
-  { email: "parent1@iadm.local", firstName: "Deepa", lastName: "Iyer", role: UserRole.PARENT },
-  { email: "parent2@iadm.local", firstName: "Sanjay", lastName: "Kulkarni", role: UserRole.PARENT },
-  { email: "parent3@iadm.local", firstName: "Nadia", lastName: "Qureshi", role: UserRole.PARENT },
-  { email: "parent4@iadm.local", firstName: "Ravi", lastName: "Menon", role: UserRole.PARENT },
+  {
+    email: "parent1@iadm.local",
+    firstName: "Deepa",
+    lastName: "Iyer",
+    role: UserRole.PARENT,
+  },
+  {
+    email: "parent2@iadm.local",
+    firstName: "Sanjay",
+    lastName: "Kulkarni",
+    role: UserRole.PARENT,
+  },
+  {
+    email: "parent3@iadm.local",
+    firstName: "Nadia",
+    lastName: "Qureshi",
+    role: UserRole.PARENT,
+  },
+  {
+    email: "parent4@iadm.local",
+    firstName: "Ravi",
+    lastName: "Menon",
+    role: UserRole.PARENT,
+  },
 ];
 
 const ASSESSMENT_TYPES: Array<{
@@ -2943,14 +3061,54 @@ const ASSESSMENT_TYPES: Array<{
   domain: ClinicalDomain;
   description: string;
 }> = [
-  { code: "BEH-OBS", name: "Behavioural Observation", domain: ClinicalDomain.PSYCHOLOGY, description: "Structured observation of behaviour across settings." },
-  { code: "COG-PROF", name: "Cognitive Profile", domain: ClinicalDomain.PSYCHOLOGY, description: "Attention, memory and problem-solving profile." },
-  { code: "SENS-PROF", name: "Sensory Profile", domain: ClinicalDomain.OCCUPATIONAL_THERAPY, description: "Sensory processing and regulation patterns." },
-  { code: "MOTOR-SKL", name: "Motor Skills Screen", domain: ClinicalDomain.OCCUPATIONAL_THERAPY, description: "Fine and gross motor coordination." },
-  { code: "COMM-EXPR", name: "Expressive Communication", domain: ClinicalDomain.SPEECH_THERAPY, description: "Expressive language and functional communication." },
-  { code: "COMM-RECP", name: "Receptive Communication", domain: ClinicalDomain.SPEECH_THERAPY, description: "Comprehension and instruction following." },
-  { code: "EDU-READ", name: "Pre-Academic Readiness", domain: ClinicalDomain.SPECIAL_EDUCATION, description: "Readiness for structured learning tasks." },
-  { code: "EDU-FUNC", name: "Functional Academics", domain: ClinicalDomain.SPECIAL_EDUCATION, description: "Applied literacy and numeracy in daily contexts." },
+  {
+    code: "BEH-OBS",
+    name: "Behavioural Observation",
+    domain: ClinicalDomain.PSYCHOLOGY,
+    description: "Structured observation of behaviour across settings.",
+  },
+  {
+    code: "COG-PROF",
+    name: "Cognitive Profile",
+    domain: ClinicalDomain.PSYCHOLOGY,
+    description: "Attention, memory and problem-solving profile.",
+  },
+  {
+    code: "SENS-PROF",
+    name: "Sensory Profile",
+    domain: ClinicalDomain.OCCUPATIONAL_THERAPY,
+    description: "Sensory processing and regulation patterns.",
+  },
+  {
+    code: "MOTOR-SKL",
+    name: "Motor Skills Screen",
+    domain: ClinicalDomain.OCCUPATIONAL_THERAPY,
+    description: "Fine and gross motor coordination.",
+  },
+  {
+    code: "COMM-EXPR",
+    name: "Expressive Communication",
+    domain: ClinicalDomain.SPEECH_THERAPY,
+    description: "Expressive language and functional communication.",
+  },
+  {
+    code: "COMM-RECP",
+    name: "Receptive Communication",
+    domain: ClinicalDomain.SPEECH_THERAPY,
+    description: "Comprehension and instruction following.",
+  },
+  {
+    code: "EDU-READ",
+    name: "Pre-Academic Readiness",
+    domain: ClinicalDomain.SPECIAL_EDUCATION,
+    description: "Readiness for structured learning tasks.",
+  },
+  {
+    code: "EDU-FUNC",
+    name: "Functional Academics",
+    domain: ClinicalDomain.SPECIAL_EDUCATION,
+    description: "Applied literacy and numeracy in daily contexts.",
+  },
 ];
 
 const ADL_ACTIVITIES: Array<{
@@ -2992,16 +3150,96 @@ const RESIDENTS: Array<{
   programType: ProgramType;
   status: ResidentStatus;
 }> = [
-  { code: "RES-0001", firstName: "Aarav", lastName: "Sharma", dateOfBirth: "2012-03-14", gender: Gender.MALE, programType: ProgramType.COMMUNITY, status: ResidentStatus.IMPORTED },
-  { code: "RES-0002", firstName: "Diya", lastName: "Kapoor", dateOfBirth: "2014-07-02", gender: Gender.FEMALE, programType: ProgramType.COMMUNITY, status: ResidentStatus.IMPORTED },
-  { code: "RES-0003", firstName: "Kabir", lastName: "Rao", dateOfBirth: "2011-11-23", gender: Gender.MALE, programType: ProgramType.FAMILY_LIVING, status: ResidentStatus.ENROLLED },
-  { code: "RES-0004", firstName: "Ananya", lastName: "Bose", dateOfBirth: "2013-01-09", gender: Gender.FEMALE, programType: ProgramType.COMMUNITY, status: ResidentStatus.MDT_ASSIGNED },
-  { code: "RES-0005", firstName: "Vivaan", lastName: "Reddy", dateOfBirth: "2010-05-30", gender: Gender.MALE, programType: ProgramType.FAMILY_LIVING, status: ResidentStatus.ASSESSMENTS_IN_PROGRESS },
-  { code: "RES-0006", firstName: "Ishita", lastName: "Verma", dateOfBirth: "2012-09-17", gender: Gender.FEMALE, programType: ProgramType.COMMUNITY, status: ResidentStatus.ASSESSMENTS_IN_PROGRESS },
-  { code: "RES-0007", firstName: "Aryan", lastName: "Gupta", dateOfBirth: "2011-02-08", gender: Gender.MALE, programType: ProgramType.COMMUNITY, status: ResidentStatus.ASSESSMENTS_COMPLETED },
-  { code: "RES-0008", firstName: "Myra", lastName: "Chatterjee", dateOfBirth: "2013-12-25", gender: Gender.FEMALE, programType: ProgramType.FAMILY_LIVING, status: ResidentStatus.IEP_IN_PROGRESS },
-  { code: "RES-0009", firstName: "Reyansh", lastName: "Pillai", dateOfBirth: "2010-08-11", gender: Gender.MALE, programType: ProgramType.COMMUNITY, status: ResidentStatus.ACTIVE },
-  { code: "RES-0010", firstName: "Saanvi", lastName: "Deshmukh", dateOfBirth: "2012-06-19", gender: Gender.FEMALE, programType: ProgramType.FAMILY_LIVING, status: ResidentStatus.ACTIVE },
+  {
+    code: "RES-0001",
+    firstName: "Aarav",
+    lastName: "Sharma",
+    dateOfBirth: "2012-03-14",
+    gender: Gender.MALE,
+    programType: ProgramType.COMMUNITY,
+    status: ResidentStatus.IMPORTED,
+  },
+  {
+    code: "RES-0002",
+    firstName: "Diya",
+    lastName: "Kapoor",
+    dateOfBirth: "2014-07-02",
+    gender: Gender.FEMALE,
+    programType: ProgramType.COMMUNITY,
+    status: ResidentStatus.IMPORTED,
+  },
+  {
+    code: "RES-0003",
+    firstName: "Kabir",
+    lastName: "Rao",
+    dateOfBirth: "2011-11-23",
+    gender: Gender.MALE,
+    programType: ProgramType.FAMILY_LIVING,
+    status: ResidentStatus.ENROLLED,
+  },
+  {
+    code: "RES-0004",
+    firstName: "Ananya",
+    lastName: "Bose",
+    dateOfBirth: "2013-01-09",
+    gender: Gender.FEMALE,
+    programType: ProgramType.COMMUNITY,
+    status: ResidentStatus.MDT_ASSIGNED,
+  },
+  {
+    code: "RES-0005",
+    firstName: "Vivaan",
+    lastName: "Reddy",
+    dateOfBirth: "2010-05-30",
+    gender: Gender.MALE,
+    programType: ProgramType.FAMILY_LIVING,
+    status: ResidentStatus.ASSESSMENTS_IN_PROGRESS,
+  },
+  {
+    code: "RES-0006",
+    firstName: "Ishita",
+    lastName: "Verma",
+    dateOfBirth: "2012-09-17",
+    gender: Gender.FEMALE,
+    programType: ProgramType.COMMUNITY,
+    status: ResidentStatus.ASSESSMENTS_IN_PROGRESS,
+  },
+  {
+    code: "RES-0007",
+    firstName: "Aryan",
+    lastName: "Gupta",
+    dateOfBirth: "2011-02-08",
+    gender: Gender.MALE,
+    programType: ProgramType.COMMUNITY,
+    status: ResidentStatus.ASSESSMENTS_COMPLETED,
+  },
+  {
+    code: "RES-0008",
+    firstName: "Myra",
+    lastName: "Chatterjee",
+    dateOfBirth: "2013-12-25",
+    gender: Gender.FEMALE,
+    programType: ProgramType.FAMILY_LIVING,
+    status: ResidentStatus.IEP_IN_PROGRESS,
+  },
+  {
+    code: "RES-0009",
+    firstName: "Reyansh",
+    lastName: "Pillai",
+    dateOfBirth: "2010-08-11",
+    gender: Gender.MALE,
+    programType: ProgramType.COMMUNITY,
+    status: ResidentStatus.ACTIVE,
+  },
+  {
+    code: "RES-0010",
+    firstName: "Saanvi",
+    lastName: "Deshmukh",
+    dateOfBirth: "2012-06-19",
+    gender: Gender.FEMALE,
+    programType: ProgramType.FAMILY_LIVING,
+    status: ResidentStatus.ACTIVE,
+  },
 ];
 
 export async function seed(): Promise<void> {
@@ -3012,8 +3250,9 @@ export async function seed(): Promise<void> {
     algorithm: "argon2id",
   });
 
+  const userIdsByEmail = new Map<string, string>();
   for (const user of USERS) {
-    await prisma.user.upsert({
+    const saved = await prisma.user.upsert({
       where: { email: user.email },
       update: {
         firstName: user.firstName,
@@ -3023,12 +3262,22 @@ export async function seed(): Promise<void> {
       },
       create: { ...user, passwordHash },
     });
+    userIdsByEmail.set(saved.email, saved.id);
   }
+
+  // Seeded statuses are attributed to the admin, so the history row has a
+  // real actor like every other transition.
+  const adminId = userIdsByEmail.get("admin@iadm.local");
+  if (!adminId) throw new Error("seed: admin user missing from USERS");
 
   for (const type of ASSESSMENT_TYPES) {
     await prisma.assessmentType.upsert({
       where: { code: type.code },
-      update: { name: type.name, domain: type.domain, description: type.description },
+      update: {
+        name: type.name,
+        domain: type.domain,
+        description: type.description,
+      },
       create: type,
     });
   }
@@ -3056,6 +3305,16 @@ export async function seed(): Promise<void> {
       create: {
         ...resident,
         dateOfBirth: new Date(resident.dateOfBirth),
+        // Spec §4.3: every status is reached through a history row. Nested
+        // in `create`, so it is written once and never on a re-run.
+        statusHistory: {
+          create: {
+            fromStatus: null,
+            toStatus: resident.status,
+            changedByUserId: adminId,
+            reason: "Seeded demo data",
+          },
+        },
       },
     });
   }
@@ -3087,15 +3346,15 @@ if (import.meta.main) {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 ```bash
 cd backend && bun run test tests/prisma/seed.test.ts
 ```
 
-Expected: PASS, 7 tests.
+Expected: PASS, 8 tests.
 
-- [ ] **Step 5: Verify the seed runs through the Prisma CLI too**
+- [x] **Step 5: Verify the seed runs through the Prisma CLI too**
 
 The test calls `seed()` directly; this proves the `prisma db seed` path in `prisma.config.ts` also works.
 
@@ -3105,7 +3364,7 @@ bun run db:seed
 
 Expected: log lines `seeding database` and `seed complete` with the counts.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd .. && git status --short
