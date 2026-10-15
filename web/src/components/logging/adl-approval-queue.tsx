@@ -28,8 +28,8 @@ export function AdlApprovalQueue() {
   }, [pending]);
 
   function approve(rows: AdlLogRow[]) {
-    for (const row of rows) actions.reviewAdlLog({ logId: row.log.id, decision: "APPROVE", reason: "" });
-    setNotice(`${rows.length} ${rows.length === 1 ? "log" : "logs"} approved.`);
+    const ok = rows.filter((row) => actions.reviewAdlLog({ logId: row.log.id, decision: "APPROVE", reason: "" }).ok).length;
+    setNotice(`${ok} ${ok === 1 ? "log" : "logs"} approved.`);
   }
 
   function reject() {

@@ -151,8 +151,15 @@ export const advanceResidentStatus: Mutation<{
   ) {
     return refuse(db, `Cannot move from ${resident.status} to ${args.toStatus}.`);
   }
-  if (args.toStatus === "MDT_ASSIGNED" && !args.team) {
-    return refuse(db, "Choose a psychologist and a PSS for the care team.");
+  if (args.toStatus === "MDT_ASSIGNED") {
+    const roleOf = (id: string | undefined) => db.users.find((u) => u.id === id && u.isActive)?.role;
+    if (
+      !args.team ||
+      roleOf(args.team.psychologistId) !== "JR_PSYCHOLOGIST" ||
+      roleOf(args.team.pssId) !== "PSS"
+    ) {
+      return refuse(db, "Choose an active psychologist and an active PSS for the care team.");
+    }
   }
 
   const next = structuredClone(db);
@@ -216,6 +223,14 @@ export const scheduleAssessment: Mutation<{
   }
   const clinician = db.users.find((u) => u.id === args.assignedToUserId);
   if (clinician?.role !== "JR_PSYCHOLOGIST") return refuse(db, "Choose a psychologist.");
+  const onTeam = db.staffAssignments.some(
+    (a) =>
+      a.residentId === args.residentId &&
+      a.userId === args.assignedToUserId &&
+      a.role === "JR_PSYCHOLOGIST" &&
+      a.unassignedAt === null,
+  );
+  if (!onTeam) return refuse(db, "Only the psychologist on this service user's care team can be booked.");
   const start = new Date(args.startsAt);
   if (Number.isNaN(start.getTime())) return refuse(db, "Choose a date and time.");
   const end = new Date(start.getTime() + 60 * 60000);
@@ -275,7 +290,9 @@ export const startAssessment: Mutation<{ assessmentId: string }> = (db, viewer, 
   const denied = guard(db, viewer, "assessment.conduct");
   if (denied) return denied;
   const a = db.assessments.find((x) => x.id === args.assessmentId);
-  if (!a || a.assignedToUserId !== viewer.id) return refuse(db, "Assessment not found.");
+  if (!a || a.assignedToUserId !== viewer.id || !canSeeResident(db, viewer, a.residentId)) {
+    return refuse(db, "Assessment not found.");
+  }
   if (a.status !== "SCHEDULED" && a.status !== "REVISION_REQUESTED") {
     return refuse(db, "Only a scheduled or returned assessment can be started.");
   }
@@ -514,6 +531,8 @@ export const reviewIepGoal: Mutation<{
   return { db: next };
 };
 
+const DEFAULT_ADL_ACTIVITIES = ["ad-feed", "ad-dress", "ad-oral", "ad-groom"];
+
 export const activateIepPlan: Mutation<{ planId: string }> = (db, viewer, args) => {
   const denied = guard(db, viewer, "iep.activate");
   if (denied) return denied;
@@ -530,6 +549,22 @@ export const activateIepPlan: Mutation<{ planId: string }> = (db, viewer, args) 
   target.endDate = end.toISOString().slice(0, 10);
   for (const g of next.iepGoals.filter((x) => x.iepPlanId === plan.id && x.approvalStatus === "APPROVED_MDT")) {
     g.status = "IN_PROGRESS_GOAL";
+  }
+  // Parent spec §4.3: the CSC assigns ADL activities when activating. The
+  // demo assigns a sensible default set so the PSS can log from day one.
+  const hasAdl = next.adlAssignments.some((a) => a.residentId === plan.residentId && a.isActive);
+  if (!hasAdl) {
+    for (const activityId of DEFAULT_ADL_ACTIVITIES) {
+      if (!next.adlActivities.some((x) => x.id === activityId && x.isActive)) continue;
+      next.adlAssignments.push({
+        id: newId("aa"),
+        residentId: plan.residentId,
+        adlActivityId: activityId,
+        assignedByUserId: viewer.id,
+        frequency: "DAILY",
+        isActive: true,
+      });
+    }
   }
   const resident = next.residents.find((r) => r.id === plan.residentId)!;
   if (resident.status === "IEP_APPROVED") {
@@ -562,15 +597,22 @@ export const createAdlLog: Mutation<{
   if (!assignment || !canSeeResident(db, viewer, assignment.residentId)) {
     return refuse(db, "You are not assigned to this service user.");
   }
-  const duplicate = db.adlLogs.some(
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(args.logDate)) return refuse(db, "Choose a date for the log.");
+  if (args.logDate > todayDate()) return refuse(db, "A log cannot be for a future date.");
+  const existing = db.adlLogs.find(
     (l) =>
       l.adlAssignmentId === args.adlAssignmentId &&
       l.logDate === args.logDate &&
       l.shift === args.shift,
   );
-  if (duplicate) return refuse(db, "This activity is already logged for that date and shift.");
+  // One row per (assignment, date, shift). A returned (rejected) log may be
+  // corrected: the resubmission replaces it rather than adding a second row.
+  if (existing && existing.approvalStatus !== "REJECTED") {
+    return refuse(db, "This activity is already logged for that date and shift.");
+  }
 
   const next = structuredClone(db);
+  if (existing) next.adlLogs = next.adlLogs.filter((l) => l.id !== existing.id);
   const id = newId("al");
   next.adlLogs.push({
     id,
@@ -636,6 +678,9 @@ export const logGoalProgress: Mutation<{
   }
   if (plan.status !== "ACTIVE_IEP" || goal.approvalStatus !== "APPROVED_MDT") {
     return refuse(db, "Progress can only be logged on approved goals of an active plan.");
+  }
+  if (viewer.role === "PSS" && goal.assignedRole !== "PSS") {
+    return refuse(db, "This goal is led by the clinician in their sessions.");
   }
   const next = structuredClone(db);
   const id = newId("gp");

@@ -189,3 +189,14 @@ All 10 tasks done; `bun run lint`, `bun run test` (46/46) and `bun run build` pa
 - Auth-store hydration flag set via the state's own setter — sessionStorage hydrates synchronously during store creation, before the exported binding exists, which left every page on "Loading…" — none.
 - Insights z-score uses a 0.06 floor on baseline SD — the synthetic baseline is so flat that z reached −8.8 — synthetic values only.
 - Chart palette (`#4f5bc8,#0ea5a4,#e08a1e,#c2417a`) passed the dataviz validator; its contrast WARN is relieved by a legend, spaced direct labels and a table view.
+
+**Final review** (fresh reviewer, whole branch 49f91a5..776a064): no Critical findings; role guard, detail-URL scoping, parent data limits, risk-band visibility and synthetic-data wording all confirmed. Fix pass, each with a test that failed first (suite 54/54) and re-verified in the browser:
+
+- Final: fixed — activating a plan left the resident with no ADL activities, so the PSS had nothing to log — `activateIepPlan` now assigns a default set (feeding, dressing, oral hygiene, grooming).
+- Final: fixed — a CSC could book a psychologist outside the care team, who then could not see the assessment — dialog offers only the team psychologist; `scheduleAssessment` refuses others; `startAssessment` also checks scoping.
+- Final: fixed (re-graded up from minor: user-reachable) — a returned ADL log could not be corrected — the resubmission replaces the rejected row, keeping one row per (assignment, date, shift).
+- Final: fixed (re-graded up: crash) — clearing the schedule date threw a RangeError — Schedule is disabled without a date.
+- Final: fixed (re-graded up: bad data) — clearing the ADL date saved logs with an empty date — the input ignores empty values; `createAdlLog` rejects empty and future dates.
+- Final: fixed — PSS could log progress on clinician-led goals — button and mutation restricted to PSS-practised goals.
+- Final: fixed — care-team roles not checked in `advanceResidentStatus`; template picker did not reset; "Approve all" announced failures as successes.
+- Final: Ruling: JR psychologists have no incidents view (parent spec §3.1 gives read access) — the demo spec's role table deliberately omits it — add in Phase 1 when incidents are wired to the backend.

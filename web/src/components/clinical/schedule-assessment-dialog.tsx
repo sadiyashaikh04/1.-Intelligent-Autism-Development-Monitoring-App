@@ -22,10 +22,16 @@ export function ScheduleAssessmentDialog({ resident, onClose }: { resident: Resi
   const actions = useActions();
   const types = useQuery((db) => db.assessmentTypes.filter((t) => t.isActive));
   const rooms = useQuery((db) => db.rooms.filter((r) => r.isActive && ["ASSESSMENT_ROOM", "THERAPY", "CONSULTATION"].includes(r.type)));
-  const psychologists = useQuery((db) => listUsers(db).filter((u) => u.role === "JR_PSYCHOLOGIST" && u.isActive));
-  const teamPsych = useQuery((db) =>
-    db.staffAssignments.find((a) => a.residentId === resident.id && a.role === "JR_PSYCHOLOGIST" && !a.unassignedAt)?.userId,
-  );
+  // Only the care-team psychologist: anyone else could not see the assessment.
+  const psychologists = useQuery((db) => {
+    const team = new Set(
+      db.staffAssignments
+        .filter((a) => a.residentId === resident.id && a.role === "JR_PSYCHOLOGIST" && !a.unassignedAt)
+        .map((a) => a.userId),
+    );
+    return listUsers(db).filter((u) => team.has(u.id) && u.isActive);
+  });
+  const teamPsych = psychologists[0]?.id;
   const [typeId, setTypeId] = useState(types[0]?.id ?? "");
   const [clinicianId, setClinicianId] = useState(teamPsych ?? psychologists[0]?.id ?? "");
   const [roomId, setRoomId] = useState(rooms[0]?.id ?? "");
@@ -33,6 +39,7 @@ export function ScheduleAssessmentDialog({ resident, onClose }: { resident: Resi
   const [error, setError] = useState<string | null>(null);
 
   function submit() {
+    if (!startsAt) return setError("Choose a date and time.");
     const result = actions.scheduleAssessment({
       residentId: resident.id,
       assessmentTypeId: typeId,
@@ -52,7 +59,7 @@ export function ScheduleAssessmentDialog({ resident, onClose }: { resident: Resi
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} disabled={!typeId || !clinicianId || !roomId}>Schedule</Button>
+          <Button onClick={submit} disabled={!typeId || !clinicianId || !roomId || !startsAt}>Schedule</Button>
         </>
       }
     >
@@ -69,8 +76,7 @@ export function ScheduleAssessmentDialog({ resident, onClose }: { resident: Resi
         <Select id="sa-clinician" value={clinicianId} onChange={(e) => setClinicianId(e.target.value)}>
           {psychologists.map((u) => (
             <option key={u.id} value={u.id}>
-              {fullName(u)}
-              {u.id === teamPsych ? " (care team)" : ""}
+              {fullName(u)} (care team)
             </option>
           ))}
         </Select>

@@ -45,8 +45,13 @@ export function AdlLogging() {
   const { drafts, update, clear } = useAdlDrafts();
 
   const keyOf = (assignmentId: string) => `${assignmentId}|${date}|${shift}`;
-  const loggedFor = (assignmentId: string) =>
+  const rowFor = (assignmentId: string) =>
     logsToday.find((row) => row.log.adlAssignmentId === assignmentId && row.log.shift === shift);
+  // A returned (rejected) log is open for correction, not "done".
+  const loggedFor = (assignmentId: string) => {
+    const row = rowFor(assignmentId);
+    return row && row.log.approvalStatus !== "REJECTED" ? row : undefined;
+  };
   const ready = assignments.filter(
     (a) => !loggedFor(a.assignment.id) && drafts[keyOf(a.assignment.id)]?.status,
   );
@@ -122,7 +127,13 @@ export function AdlLogging() {
         {changingWhen && (
           <div className="grid grid-cols-2 gap-3">
             <Field label="Date" htmlFor="adl-date">
-              <Input id="adl-date" type="date" max={localIsoDate()} value={date} onChange={(e) => setDate(e.target.value)} />
+              <Input
+                id="adl-date"
+                type="date"
+                max={localIsoDate()}
+                value={date}
+                onChange={(e) => e.target.value && setDate(e.target.value)}
+              />
             </Field>
             <Field label="Shift" htmlFor="adl-shift">
               <Select id="adl-shift" value={shift} onChange={(e) => setShift(e.target.value as Shift)}>
@@ -139,6 +150,11 @@ export function AdlLogging() {
       </div>
 
       <ul className="mt-4 space-y-3">
+        {assignments.length === 0 && (
+          <li>
+            <EmptyState title="No activities assigned yet" body="The coordinator assigns daily activities when the plan is activated." />
+          </li>
+        )}
         {assignments.map(({ assignment, activity }) => {
           const logged = loggedFor(assignment.id);
           const key = keyOf(assignment.id);
@@ -155,12 +171,14 @@ export function AdlLogging() {
                     Logged: {humanize(logged.log.status)}
                     {logged.log.promptLevel && ` · ${humanize(logged.log.promptLevel)}`}
                     {logged.log.mood && ` · ${humanize(logged.log.mood)}`}
-                    {logged.log.rejectionReason && (
-                      <span className="block text-rose-700">Returned: {logged.log.rejectionReason}</span>
-                    )}
                   </p>
                 ) : (
                   <div className="space-y-3">
+                    {rowFor(assignment.id)?.log.rejectionReason && (
+                      <Notice tone="warning">
+                        Returned by the coordinator: {rowFor(assignment.id)?.log.rejectionReason}. Correct and resubmit.
+                      </Notice>
+                    )}
                     <Segmented
                       name={`${activity?.name} status`}
                       value={draft.status}

@@ -30,6 +30,7 @@ export default function IepPlanPage() {
   const actions = useActions();
   const row = useQuery(getIepPlan, id);
   const [goal, setGoal] = useState(EMPTY_GOAL);
+  const [template, setTemplate] = useState("");
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -54,10 +55,14 @@ export default function IepPlanPage() {
   };
 
   function addGoal() {
-    if (run(actions.addIepGoal({ planId: plan.id, ...goal }), "Goal added.")) setGoal(EMPTY_GOAL);
+    if (run(actions.addIepGoal({ planId: plan.id, ...goal }), "Goal added.")) {
+      setGoal(EMPTY_GOAL);
+      setTemplate("");
+    }
   }
 
   function applyTemplate(index: string) {
+    setTemplate(index);
     const t = GOAL_TEMPLATES[Number(index)];
     if (t) setGoal({ ...t });
   }
@@ -149,7 +154,7 @@ export default function IepPlanPage() {
           <CardTitle>Add a goal</CardTitle>
           <div className="space-y-4">
             <Field label="Start from a suggestion (optional)" htmlFor="tpl">
-              <Select id="tpl" defaultValue="" onChange={(e) => applyTemplate(e.target.value)}>
+              <Select id="tpl" value={template} onChange={(e) => applyTemplate(e.target.value)}>
                 <option value="">Write my own…</option>
                 {GOAL_TEMPLATES.map((t, i) => (
                   <option key={t.title} value={i}>

@@ -26,7 +26,9 @@ export const PROMPT_LEVELS: PromptLevel[] = [
 function loggableGoal(db: DemoDb, goalId: string) {
   const goal = db.iepGoals.find((g) => g.id === goalId);
   const plan = db.iepPlans.find((p) => p.id === goal?.iepPlanId);
-  const loggable = !!goal && plan?.status === "ACTIVE_IEP" && goal.approvalStatus === "APPROVED_MDT";
+  // PSS log only the goals they practise; clinician-led goals are logged in sessions.
+  const loggable =
+    !!goal && plan?.status === "ACTIVE_IEP" && goal.approvalStatus === "APPROVED_MDT" && goal.assignedRole === "PSS";
   return loggable ? goal : null;
 }
 
