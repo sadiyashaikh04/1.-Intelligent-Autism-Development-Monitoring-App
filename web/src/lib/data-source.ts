@@ -15,6 +15,8 @@ import { useDemoData } from "@/stores/demo-data-store";
  */
 
 export * from "@/lib/domain/queries";
+/** Static catalogue content (rubric items, goal suggestions). */
+export { ASSESSMENT_ITEMS, GOAL_TEMPLATES } from "@/data/seed/catalogues";
 
 export function useViewer(): Viewer | null {
   const userId = useDemoAuth((s) => s.userId);
