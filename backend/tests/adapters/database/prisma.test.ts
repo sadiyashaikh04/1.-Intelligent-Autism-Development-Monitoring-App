@@ -1,5 +1,9 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { disconnectPrisma, prisma } from "@/adapters/database/prisma";
+import {
+  disconnectPrisma,
+  prisma,
+  schemaFromUrl,
+} from "@/adapters/database/prisma";
 
 afterAll(async () => {
   await disconnectPrisma();
@@ -16,6 +20,18 @@ describe("prisma adapter", () => {
   it("returns the same instance on repeated imports", async () => {
     const again = await import("@/adapters/database/prisma");
     expect(again.prisma).toBe(prisma);
+  });
+
+  // The pg driver ignores Prisma's `?schema=` URL parameter, so the
+  // adapter must read it and pass it on — otherwise a test pointed at a
+  // throwaway schema silently writes to `public`.
+  it("reads the target schema from the connection string", () => {
+    expect(
+      schemaFromUrl("postgresql://u:p@localhost:5432/iadm?schema=seedproof"),
+    ).toBe("seedproof");
+    expect(schemaFromUrl("postgresql://u:p@localhost:5432/iadm")).toBe(
+      undefined,
+    );
   });
 
   it("exposes every model the schema defines", () => {

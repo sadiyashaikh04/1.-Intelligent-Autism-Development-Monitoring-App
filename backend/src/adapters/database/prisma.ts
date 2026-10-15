@@ -14,6 +14,14 @@ import { LOGGER_EVENTS } from "@/common/loggerEvents";
  * Held on globalThis so `bun --watch` reloads reuse one connection pool
  * instead of leaking a new one on every file save.
  */
+/**
+ * `?schema=` is a Prisma CLI convention; the pg driver ignores it. The
+ * adapter takes the schema as an option instead, so it is read out here.
+ */
+export function schemaFromUrl(url: string): string | undefined {
+  return new URL(url).searchParams.get("schema") ?? undefined;
+}
+
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
@@ -21,7 +29,10 @@ const globalForPrisma = globalThis as unknown as {
 export const prisma: PrismaClient =
   globalForPrisma.prisma ??
   new PrismaClient({
-    adapter: new PrismaPg({ connectionString: config.database.url }),
+    adapter: new PrismaPg(
+      { connectionString: config.database.url },
+      { schema: schemaFromUrl(config.database.url) },
+    ),
     log: ["warn", "error"],
   });
 
