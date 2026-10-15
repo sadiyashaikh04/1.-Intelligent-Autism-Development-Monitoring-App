@@ -902,7 +902,7 @@ lines can be isolated."
 
 ---
 
-## Task 5: Typed error hierarchy
+## Task 5: Typed error hierarchy — ✅ DONE (2026-10-15)
 
 **Files:**
 - Create: `backend/src/common/errors.ts`
@@ -923,7 +923,7 @@ lines can be isolated."
 
   Every constructor takes `(message: string, code?: string, details?: unknown)`, except `InvalidTransitionError` which takes `(from: string, to: string, entity: string)`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `backend/tests/common/errors.test.ts`:
 
@@ -1036,15 +1036,15 @@ describe("toErrorResponse", () => {
 
 The two 500 tests are the important ones: an unexpected error must never return its own message, because messages routinely contain connection strings, file paths, and query fragments.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 ```bash
-cd backend && bun test tests/common/errors.test.ts
+cd backend && bun run test tests/common/errors.test.ts
 ```
 
 Expected: FAIL — cannot resolve `@/common/errors`.
 
-- [ ] **Step 3: Write `backend/src/common/errors.ts`**
+- [x] **Step 3: Write `backend/src/common/errors.ts`**
 
 ```typescript
 /**
@@ -1069,11 +1069,7 @@ export abstract class AppError extends Error {
 
 export class ValidationError extends AppError {
   readonly status = 400;
-  constructor(
-    message: string,
-    code = "VALIDATION_FAILED",
-    details?: unknown,
-  ) {
+  constructor(message: string, code = "VALIDATION_FAILED", details?: unknown) {
     super(message, code, details);
   }
 }
@@ -1162,23 +1158,23 @@ export function toErrorResponse(error: unknown): ErrorResponse {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 ```bash
-cd backend && bun test tests/common/errors.test.ts
+cd backend && bun run test tests/common/errors.test.ts
 ```
 
 Expected: PASS, 10 tests.
 
-- [ ] **Step 5: Run the whole suite and the checks**
+- [x] **Step 5: Run the whole suite and the checks**
 
 ```bash
-bun test && bun run check
+bun run test && bun run check
 ```
 
 Expected: all tests pass, exit 0.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd .. && git status --short
