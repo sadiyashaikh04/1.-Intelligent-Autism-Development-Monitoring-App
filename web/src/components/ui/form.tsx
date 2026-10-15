@@ -59,8 +59,9 @@ export function Segmented<T extends string>({
   onChange: (value: T) => void;
   name: string;
 }) {
+  const cols = options.length === 3 ? "grid-cols-3" : "grid-cols-2";
   return (
-    <div role="radiogroup" aria-label={name} className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+    <div role="radiogroup" aria-label={name} className={`grid ${cols} gap-2 sm:flex sm:flex-wrap`}>
       {options.map((o) => {
         const active = value === o.value;
         return (
