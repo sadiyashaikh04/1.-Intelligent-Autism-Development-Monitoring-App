@@ -1975,16 +1975,16 @@ level rather than trusting the service layer under concurrent writes."
 
 ---
 
-## Task 8: Prisma schema — scheduling, incidents, notifications, intelligence
+## Task 8: Prisma schema — scheduling, incidents, notifications, intelligence — ✅ DONE (2026-10-15)
 
 **Files:**
 - Modify: `backend/prisma/schema.prisma`
 
 **Interfaces:**
-- Consumes: `User`, `Resident` from Task 6.
+- Consumes: `User`, `Resident` from Task 6; `Assessment` from Task 7 (gains `calendarSlotId`).
 - Produces: `Room`, `CalendarSlot`, `Incident`, `Notification`, `NotificationPreference`, `DevelopmentSnapshot`, `RiskAssessment`. This completes all 22 models.
 
-- [ ] **Step 1: Extend the `User` relation block**
+- [x] **Step 1: Extend the `User` relation block**
 
 Append inside `User`:
 
@@ -1997,7 +1997,7 @@ Append inside `User`:
   notificationPrefs     NotificationPreference[]
 ```
 
-- [ ] **Step 2: Extend the `Resident` relation block**
+- [x] **Step 2: Extend the `Resident` relation block**
 
 Append inside `Resident`:
 
@@ -2008,7 +2008,7 @@ Append inside `Resident`:
   riskAssessments      RiskAssessment[]
 ```
 
-- [ ] **Step 3: Append scheduling models**
+- [x] **Step 3: Append scheduling models**
 
 ```prisma
 // ─────────────────────────────────────────────────────────
@@ -2080,7 +2080,7 @@ and an index beside the existing two:
 
 `SetNull` because cancelling or deleting a slot must not delete the assessment — it goes back to needing a slot.
 
-- [ ] **Step 4: Append incident and notification models**
+- [x] **Step 4: Append incident and notification models**
 
 ```prisma
 // ─────────────────────────────────────────────────────────
@@ -2150,7 +2150,7 @@ model NotificationPreference {
 }
 ```
 
-- [ ] **Step 5: Append the intelligence models**
+- [x] **Step 5: Append the intelligence models**
 
 ```prisma
 // ─────────────────────────────────────────────────────────
@@ -2205,7 +2205,7 @@ model RiskAssessment {
 }
 ```
 
-- [ ] **Step 6: Validate, format, and confirm all 22 models exist**
+- [x] **Step 6: Validate, format, and confirm all 22 models exist**
 
 ```bash
 cd backend
@@ -2217,7 +2217,7 @@ grep -c "^enum "  prisma/schema.prisma   # expect 28
 
 Expected: valid schema, `22`, `28`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd .. && git status --short

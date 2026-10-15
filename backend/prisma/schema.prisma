@@ -306,14 +306,20 @@ model User {
   staffAssignments ResidentStaffAssignment[]
   parentLinks      ResidentParent[]
 
-  assessmentsAssigned Assessment[]      @relation("AssessmentAssignee")
-  assessmentsReviewed Assessment[]      @relation("AssessmentReviewer")
-  iepPlansAuthored    IepPlan[]         @relation("IepAuthor")
-  iepPlansApproved    IepPlan[]         @relation("IepApprover")
-  goalProgressLogs    GoalProgressLog[]
-  adlAssignmentsMade  AdlAssignment[]
-  adlLogsCreated      AdlLog[]          @relation("AdlLogger")
-  adlLogsApproved     AdlLog[]          @relation("AdlApprover")
+  assessmentsAssigned   Assessment[]             @relation("AssessmentAssignee")
+  assessmentsReviewed   Assessment[]             @relation("AssessmentReviewer")
+  iepPlansAuthored      IepPlan[]                @relation("IepAuthor")
+  iepPlansApproved      IepPlan[]                @relation("IepApprover")
+  goalProgressLogs      GoalProgressLog[]
+  adlAssignmentsMade    AdlAssignment[]
+  adlLogsCreated        AdlLog[]                 @relation("AdlLogger")
+  adlLogsApproved       AdlLog[]                 @relation("AdlApprover")
+  calendarSlotsAssigned CalendarSlot[]           @relation("SlotStaff")
+  calendarSlotsCreated  CalendarSlot[]           @relation("SlotCreator")
+  incidentsReported     Incident[]               @relation("IncidentReporter")
+  incidentsReviewed     Incident[]               @relation("IncidentReviewer")
+  notifications         Notification[]
+  notificationPrefs     NotificationPreference[]
 
   @@index([role], map: "idx_user_role")
   @@index([isActive], map: "idx_user_active")
@@ -382,9 +388,13 @@ model Resident {
   staffAssignments ResidentStaffAssignment[]
   parents          ResidentParent[]
 
-  assessments    Assessment[]
-  iepPlans       IepPlan[]
-  adlAssignments AdlAssignment[]
+  assessments          Assessment[]
+  iepPlans             IepPlan[]
+  adlAssignments       AdlAssignment[]
+  calendarSlots        CalendarSlot[]
+  incidents            Incident[]
+  developmentSnapshots DevelopmentSnapshot[]
+  riskAssessments      RiskAssessment[]
 
   @@index([status], map: "idx_resident_status")
   @@index([lastName, firstName], map: "idx_resident_name")
@@ -477,6 +487,7 @@ model Assessment {
   assignedToUserId String           @map("assigned_to_user_id") @db.Uuid
   status           AssessmentStatus @default(PENDING)
   scheduledAt      DateTime?        @map("scheduled_at") @db.Timestamptz(6)
+  calendarSlotId   String?          @map("calendar_slot_id") @db.Uuid
   /// Structured answers. Shape is owned by the Zod schema in
   /// repos/schemas/, not by the database.
   findings         Json?
@@ -491,9 +502,11 @@ model Assessment {
   assessmentType AssessmentType @relation(fields: [assessmentTypeId], references: [id])
   assignedTo     User           @relation("AssessmentAssignee", fields: [assignedToUserId], references: [id])
   reviewedBy     User?          @relation("AssessmentReviewer", fields: [reviewedByUserId], references: [id])
+  calendarSlot   CalendarSlot?  @relation(fields: [calendarSlotId], references: [id], onDelete: SetNull)
 
   @@index([residentId, status], map: "idx_assessment_resident_status")
   @@index([assignedToUserId, status], map: "idx_assessment_assignee_status")
+  @@index([calendarSlotId], map: "idx_assessment_calendar_slot")
   @@map("assessments")
 }
 
@@ -635,4 +648,169 @@ model AdlLog {
   @@index([logDate, approvalStatus], map: "idx_adl_log_date_approval")
   @@index([approvalStatus], map: "idx_adl_log_approval")
   @@map("adl_logs")
+}
+
+// ─────────────────────────────────────────────────────────
+// SCHEDULING
+// ─────────────────────────────────────────────────────────
+
+model Room {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @map("room_id") @db.Uuid
+  name      String    @unique @db.VarChar(200)
+  type      RoomType
+  capacity  Int       @default(1)
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  calendarSlots CalendarSlot[]
+
+  @@index([isActive], map: "idx_room_active")
+  @@map("rooms")
+}
+
+model CalendarSlot {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @map("calendar_slot_id") @db.Uuid
+  type            SlotType
+  status          SlotStatus @default(SCHEDULED_SLOT)
+  startsAt        DateTime   @map("starts_at") @db.Timestamptz(6)
+  endsAt          DateTime   @map("ends_at") @db.Timestamptz(6)
+  roomId          String?    @map("room_id") @db.Uuid
+  residentId      String?    @map("resident_id") @db.Uuid
+  staffUserId     String     @map("staff_user_id") @db.Uuid
+  title           String     @db.VarChar(255)
+  notes           String?    @db.Text
+  createdByUserId String     @map("created_by_user_id") @db.Uuid
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  room        Room?        @relation(fields: [roomId], references: [id])
+  resident    Resident?    @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  staff       User         @relation("SlotStaff", fields: [staffUserId], references: [id])
+  createdBy   User         @relation("SlotCreator", fields: [createdByUserId], references: [id])
+  assessments Assessment[]
+
+  // Overlap detection queries filter on these two ranges.
+  @@index([roomId, startsAt, endsAt], map: "idx_slot_room_range")
+  @@index([staffUserId, startsAt, endsAt], map: "idx_slot_staff_range")
+  @@index([residentId, startsAt], map: "idx_slot_resident_start")
+  @@map("calendar_slots")
+}
+
+// ─────────────────────────────────────────────────────────
+// INCIDENTS & NOTIFICATIONS
+// ─────────────────────────────────────────────────────────
+
+/// Label source for the ML incident-risk model.
+model Incident {
+  id               String               @id @default(dbgenerated("gen_random_uuid()")) @map("incident_id") @db.Uuid
+  residentId       String               @map("resident_id") @db.Uuid
+  reportedByUserId String               @map("reported_by_user_id") @db.Uuid
+  type             IncidentType
+  status           IncidentStatus       @default(REPORTED)
+  severity         NotificationSeverity @default(NORMAL)
+  occurredAt       DateTime             @map("occurred_at") @db.Timestamptz(6)
+  location         String?              @db.VarChar(255)
+  description      String               @db.Text
+  notifyParent     Boolean              @default(false) @map("notify_parent")
+  reviewedByUserId String?              @map("reviewed_by_user_id") @db.Uuid
+  resolution       String?              @db.Text
+  resolvedAt       DateTime?            @map("resolved_at") @db.Timestamptz(6)
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  resident   Resident @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  reportedBy User     @relation("IncidentReporter", fields: [reportedByUserId], references: [id])
+  reviewedBy User?    @relation("IncidentReviewer", fields: [reviewedByUserId], references: [id])
+
+  @@index([residentId, occurredAt], map: "idx_incident_resident_occurred")
+  @@index([status], map: "idx_incident_status")
+  @@index([occurredAt], map: "idx_incident_occurred")
+  @@map("incidents")
+}
+
+model Notification {
+  id         String               @id @default(dbgenerated("gen_random_uuid()")) @map("notification_id") @db.Uuid
+  userId     String               @map("user_id") @db.Uuid
+  type       NotificationType
+  severity   NotificationSeverity @default(NORMAL)
+  title      String               @db.VarChar(255)
+  body       String               @db.Text
+  entityType String?              @map("entity_type") @db.VarChar(100)
+  entityId   String?              @map("entity_id") @db.Uuid
+  readAt     DateTime?            @map("read_at") @db.Timestamptz(6)
+  createdAt  DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Drives the unread badge: partial scan on unread rows per user.
+  @@index([userId, readAt], map: "idx_notification_user_read")
+  @@index([userId, createdAt], map: "idx_notification_user_created")
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id        String           @id @default(dbgenerated("gen_random_uuid()")) @map("notification_preference_id") @db.Uuid
+  userId    String           @map("user_id") @db.Uuid
+  type      NotificationType
+  enabled   Boolean          @default(true)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type], map: "uq_notification_pref_user_type")
+  @@map("notification_preferences")
+}
+
+// ─────────────────────────────────────────────────────────
+// INTELLIGENCE LAYER
+// ─────────────────────────────────────────────────────────
+
+/// One row per resident per clinical domain per week. Written by the
+/// nightly insights job; recomputed idempotently via the unique index.
+model DevelopmentSnapshot {
+  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @map("development_snapshot_id") @db.Uuid
+  residentId          String              @map("resident_id") @db.Uuid
+  domain              ClinicalDomain
+  weekStart           DateTime            @map("week_start") @db.Date
+  /// 0..1 composite of goal outcomes and ADL prompt levels. See spec §6.1A.
+  independenceIndex   Float               @map("independence_index")
+  goalAchievementRate Float               @map("goal_achievement_rate")
+  adlCompletionRate   Float               @map("adl_completion_rate")
+  trajectory          TrajectoryDirection @default(INSUFFICIENT_DATA)
+  /// OLS slope over the trailing 8 weekly points.
+  slope               Float               @default(0)
+  /// Z-score of the recent window against this resident's own baseline.
+  baselineDeviation   Float?              @map("baseline_deviation")
+  computedAt          DateTime            @default(now()) @map("computed_at") @db.Timestamptz(6)
+
+  resident Resident @relation(fields: [residentId], references: [id], onDelete: Cascade)
+
+  @@unique([residentId, domain, weekStart], map: "uq_dev_snapshot_resident_domain_week")
+  @@index([residentId, weekStart], map: "idx_dev_snapshot_resident_week")
+  @@index([trajectory], map: "idx_dev_snapshot_trajectory")
+  @@map("development_snapshots")
+}
+
+/// One row per resident per model run. Never overwritten — the history of
+/// what the model said, and when, is part of the audit trail.
+model RiskAssessment {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @map("risk_assessment_id") @db.Uuid
+  residentId   String   @map("resident_id") @db.Uuid
+  assessedFor  DateTime @map("assessed_for") @db.Date
+  band         RiskBand
+  score        Float
+  /// Ordered [{ feature, contribution, direction }]. This is what the
+  /// clinician actually reads — a bare score is never shown alone.
+  topFactors   Json     @map("top_factors")
+  modelVersion String   @map("model_version") @db.VarChar(50)
+  computedAt   DateTime @default(now()) @map("computed_at") @db.Timestamptz(6)
+
+  resident Resident @relation(fields: [residentId], references: [id], onDelete: Cascade)
+
+  @@index([residentId, assessedFor], map: "idx_risk_resident_date")
+  @@index([band, assessedFor], map: "idx_risk_band_date")
+  @@map("risk_assessments")
 }
