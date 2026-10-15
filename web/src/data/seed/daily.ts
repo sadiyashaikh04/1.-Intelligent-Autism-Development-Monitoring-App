@@ -238,7 +238,7 @@ export function buildCalendarSlots(
           createdByUserId: teamMember(db, residentId, "CSC"),
         });
       }
-      for (const weekday of [0, 2, 4]) {
+      for (const weekday of [0, 1, 2, 3, 4]) {
         const start = slotAt(weekOffset, weekday, 14 + (index % 3));
         slots.push({
           id: `slot-ipp-${residentId}-${weekOffset}-${weekday}`,
