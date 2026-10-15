@@ -118,10 +118,13 @@ psql -d postgres -v ON_ERROR_STOP=1 <<'SQL'
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'iadm') THEN
-    CREATE ROLE iadm LOGIN PASSWORD 'iadm_dev_password';
+    CREATE ROLE iadm LOGIN CREATEDB PASSWORD 'iadm_dev_password';
   END IF;
 END
 $$;
+-- Prisma Migrate creates a temporary shadow database on every
+-- `migrate dev`, so the role needs CREATEDB (not superuser).
+ALTER ROLE iadm CREATEDB;
 SQL
 
 psql -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='iadm'" \
@@ -2232,18 +2235,19 @@ when survives as an audit trail."
 
 ---
 
-## Task 9: Initial migration and the Prisma client adapter
+## Task 9: Initial migration and the Prisma client adapter — ✅ DONE (2026-10-15)
 
 **Files:**
 - Create: `backend/prisma/migrations/<timestamp>_init/migration.sql` (generated)
 - Create: `backend/src/adapters/database/prisma.ts`
+- Modify: `backend/package.json`, `backend/bun.lock` (adds `@prisma/adapter-pg`)
 - Test: `backend/tests/adapters/database/prisma.test.ts`
 
 **Interfaces:**
 - Consumes: `config` from `@/config/configs`, the generated Prisma client.
 - Produces: `prisma` (a `PrismaClient` singleton) and `disconnectPrisma(): Promise<void>`, both from `@/adapters/database/prisma`.
 
-- [ ] **Step 1: Generate the client and create the migration**
+- [x] **Step 1: Generate the client and create the migration**
 
 ```bash
 cd backend
@@ -2271,11 +2275,15 @@ bunx prisma migrate dev
 
 Expected: `Your database is now in sync with your schema.` Confirm the index exists with `psql ... -c '\d resident_staff_assignments'`.
 
+Verified 2026-10-15: Prisma ignores indexes it does not know about, so a later `migrate dev` produces an empty diff rather than dropping this one.
+
 > **Added 2026-10-15** while executing Task 6: the original plan never created this index, only mentioned it in a schema comment.
+
+If this errors with "permission denied to create database", the `iadm` role lacks `CREATEDB`, which Prisma needs for its shadow database: `psql -d postgres -c 'ALTER ROLE iadm CREATEDB;'` (Task 1 now grants it; it was missing on 2026-08-04).
 
 If this errors with "can't reach database server", the local Postgres is not running — `brew services start postgresql@17`, then retry.
 
-- [ ] **Step 2: Verify all 22 tables landed**
+- [x] **Step 2: Verify all 22 tables landed**
 
 ```bash
 psql "postgresql://iadm:iadm_dev_password@localhost:5432/iadm" -c "\dt"
@@ -2291,7 +2299,7 @@ psql "postgresql://iadm:iadm_dev_password@localhost:5432/iadm" -tAc \
 
 Expected: `22`.
 
-- [ ] **Step 3: Write the failing test**
+- [x] **Step 3: Write the failing test**
 
 Create `backend/tests/adapters/database/prisma.test.ts`:
 
@@ -2330,17 +2338,24 @@ describe("prisma adapter", () => {
 });
 ```
 
-- [ ] **Step 4: Run it to verify it fails**
+- [x] **Step 4: Run it to verify it fails**
 
 ```bash
-cd backend && bun test tests/adapters/database/prisma.test.ts
+cd backend && bun run test tests/adapters/database/prisma.test.ts
 ```
 
 Expected: FAIL — cannot resolve `@/adapters/database/prisma`.
 
-- [ ] **Step 5: Write `backend/src/adapters/database/prisma.ts`**
+- [x] **Step 5: Write `backend/src/adapters/database/prisma.ts`**
+
+> **Ruling, 2026-10-15:** Prisma 7 removed the `datasources` constructor option; the client must be given a driver adapter (or an Accelerate URL). Install it first, version-matched to Prisma:
+>
+> ```bash
+> bun add @prisma/adapter-pg@^7.9.1
+> ```
 
 ```typescript
+import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { config } from "@/config/configs";
 import { logger } from "@/common/logger";
@@ -2349,6 +2364,9 @@ import { LOGGER_EVENTS } from "@/common/loggerEvents";
 /**
  * The single Prisma client for the process. Repos import this; nothing
  * else in the codebase may import @prisma/client directly.
+ *
+ * Prisma 7 connects through a driver adapter rather than its own engine,
+ * so the connection string goes to PrismaPg, not to the client.
  *
  * Held on globalThis so `bun --watch` reloads reuse one connection pool
  * instead of leaking a new one on every file save.
@@ -2360,10 +2378,8 @@ const globalForPrisma = globalThis as unknown as {
 export const prisma: PrismaClient =
   globalForPrisma.prisma ??
   new PrismaClient({
-    datasources: { db: { url: config.database.url } },
-    log: config.isProduction
-      ? ["warn", "error"]
-      : ["warn", "error"],
+    adapter: new PrismaPg({ connectionString: config.database.url }),
+    log: ["warn", "error"],
   });
 
 if (!config.isProduction) {
@@ -2372,11 +2388,14 @@ if (!config.isProduction) {
 
 export async function disconnectPrisma(): Promise<void> {
   await prisma.$disconnect();
-  logger.info({ event: LOGGER_EVENTS.DB_DISCONNECTED }, "database disconnected");
+  logger.info(
+    { event: LOGGER_EVENTS.DB_DISCONNECTED },
+    "database disconnected",
+  );
 }
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 ```bash
 cd backend && bun run test tests/adapters/database/prisma.test.ts
@@ -2384,12 +2403,13 @@ cd backend && bun run test tests/adapters/database/prisma.test.ts
 
 Expected: PASS, 3 tests. The `test` script already passes `--env-file=env/.env.local`, so `bun run test` (not bare `bun test`) is what loads DATABASE_URL.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd .. && git status --short
 git add backend/prisma/migrations backend/src/adapters/database/prisma.ts \
-        backend/tests/adapters/database/prisma.test.ts
+        backend/tests/adapters/database/prisma.test.ts \
+        backend/package.json backend/bun.lock
 git commit -m "feat(backend): add initial migration and prisma client adapter
 
 Creates all 22 tables. The client is held on globalThis in development
