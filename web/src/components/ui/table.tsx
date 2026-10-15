@@ -9,6 +9,8 @@ export interface Column<T> {
   cell: (row: T) => ReactNode;
   /** Hide in the mobile card view (shown only in the table). */
   desktopOnly?: boolean;
+  /** Span the full card width on mobile (chips, long text). */
+  wide?: boolean;
   className?: string;
 }
 
@@ -72,9 +74,9 @@ export function DataTable<T>({
                 {columns
                   .filter((c) => !c.desktopOnly)
                   .map((c) => (
-                    <div key={c.header} className="min-w-0">
+                    <div key={c.header} className={`min-w-0 ${c.wide ? "col-span-2" : ""}`}>
                       <dt className="text-xs text-ink-500">{c.header}</dt>
-                      <dd className="truncate text-ink-900">{c.cell(row)}</dd>
+                      <dd className={c.wide ? "text-ink-900" : "truncate text-ink-900"}>{c.cell(row)}</dd>
                     </div>
                   ))}
               </dl>
