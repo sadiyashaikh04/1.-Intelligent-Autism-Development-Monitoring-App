@@ -1701,7 +1701,7 @@ append-only so it carries no updatedAt."
 
 ---
 
-## Task 7: Prisma schema — assessments, IEP, and ADL
+## Task 7: Prisma schema — assessments, IEP, and ADL — ✅ DONE (2026-10-15)
 
 **Files:**
 - Modify: `backend/prisma/schema.prisma` (append models, add back-relations to `User` and `Resident`)
@@ -1710,7 +1710,9 @@ append-only so it carries no updatedAt."
 - Consumes: `User`, `Resident` from Task 6.
 - Produces: `AssessmentType`, `Assessment`, `IepPlan`, `IepGoal`, `GoalProgressLog`, `AdlActivity`, `AdlAssignment`, `AdlLog`.
 
-- [ ] **Step 1: Add back-relation fields to `User`**
+> **Note, 2026-10-15:** spec §4.2 gives `Assessment` a `calendarSlotId?`. It cannot be added here because `CalendarSlot` does not exist until Task 8, and Prisma validates the whole file. Task 8 Step 3 adds it.
+
+- [x] **Step 1: Add back-relation fields to `User`**
 
 In the `User` model, replace the existing relation block with:
 
@@ -1733,7 +1735,7 @@ In the `User` model, replace the existing relation block with:
 
 Named relations (`@relation("AssessmentAssignee")`) are required wherever two fields point at the same model, so Prisma can tell the foreign keys apart.
 
-- [ ] **Step 2: Add back-relation fields to `Resident`**
+- [x] **Step 2: Add back-relation fields to `Resident`**
 
 ```prisma
   statusHistory    ResidentStatusHistory[]
@@ -1745,7 +1747,7 @@ Named relations (`@relation("AssessmentAssignee")`) are required wherever two fi
   adlAssignments AdlAssignment[]
 ```
 
-- [ ] **Step 3: Append the assessment models**
+- [x] **Step 3: Append the assessment models**
 
 ```prisma
 // ─────────────────────────────────────────────────────────
@@ -1800,7 +1802,7 @@ model Assessment {
 }
 ```
 
-- [ ] **Step 4: Append the IEP models**
+- [x] **Step 4: Append the IEP models**
 
 ```prisma
 // ─────────────────────────────────────────────────────────
@@ -1876,7 +1878,7 @@ model GoalProgressLog {
 }
 ```
 
-- [ ] **Step 5: Append the ADL models**
+- [x] **Step 5: Append the ADL models**
 
 ```prisma
 // ─────────────────────────────────────────────────────────
@@ -1950,7 +1952,7 @@ model AdlLog {
 
 The `@@unique([adlAssignmentId, logDate, shift])` is the database-level guarantee behind spec §5.3's "one log per (assignment, date, shift)". Enforcing it in the service layer alone would leak duplicates under concurrent submissions from two devices.
 
-- [ ] **Step 6: Validate and format**
+- [x] **Step 6: Validate and format**
 
 ```bash
 cd backend && bun run db:format && bun run db:validate
@@ -1958,7 +1960,7 @@ cd backend && bun run db:format && bun run db:validate
 
 Expected: `The schema at prisma/schema.prisma is valid 🚀`.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 cd .. && git status --short
@@ -2044,10 +2046,11 @@ model CalendarSlot {
   createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  room      Room?     @relation(fields: [roomId], references: [id])
-  resident  Resident? @relation(fields: [residentId], references: [id], onDelete: Cascade)
-  staff     User      @relation("SlotStaff", fields: [staffUserId], references: [id])
-  createdBy User      @relation("SlotCreator", fields: [createdByUserId], references: [id])
+  room        Room?        @relation(fields: [roomId], references: [id])
+  resident    Resident?    @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  staff       User         @relation("SlotStaff", fields: [staffUserId], references: [id])
+  createdBy   User         @relation("SlotCreator", fields: [createdByUserId], references: [id])
+  assessments Assessment[]
 
   // Overlap detection queries filter on these two ranges.
   @@index([roomId, startsAt, endsAt], map: "idx_slot_room_range")
@@ -2056,6 +2059,26 @@ model CalendarSlot {
   @@map("calendar_slots")
 }
 ```
+
+**Then link `Assessment` to its slot** (spec §4.2 `calendarSlotId?`, workflow §5.2 step 1 — added 2026-10-15, missing from Task 7). In the `Assessment` model add the scalar after `scheduledAt`:
+
+```prisma
+  calendarSlotId   String?          @map("calendar_slot_id") @db.Uuid
+```
+
+the relation after `reviewedBy`:
+
+```prisma
+  calendarSlot   CalendarSlot?  @relation(fields: [calendarSlotId], references: [id], onDelete: SetNull)
+```
+
+and an index beside the existing two:
+
+```prisma
+  @@index([calendarSlotId], map: "idx_assessment_calendar_slot")
+```
+
+`SetNull` because cancelling or deleting a slot must not delete the assessment — it goes back to needing a slot.
 
 - [ ] **Step 4: Append incident and notification models**
 

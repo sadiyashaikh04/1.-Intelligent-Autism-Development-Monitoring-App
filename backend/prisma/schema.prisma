@@ -306,6 +306,15 @@ model User {
   staffAssignments ResidentStaffAssignment[]
   parentLinks      ResidentParent[]
 
+  assessmentsAssigned Assessment[]      @relation("AssessmentAssignee")
+  assessmentsReviewed Assessment[]      @relation("AssessmentReviewer")
+  iepPlansAuthored    IepPlan[]         @relation("IepAuthor")
+  iepPlansApproved    IepPlan[]         @relation("IepApprover")
+  goalProgressLogs    GoalProgressLog[]
+  adlAssignmentsMade  AdlAssignment[]
+  adlLogsCreated      AdlLog[]          @relation("AdlLogger")
+  adlLogsApproved     AdlLog[]          @relation("AdlApprover")
+
   @@index([role], map: "idx_user_role")
   @@index([isActive], map: "idx_user_active")
   @@index([deletedAt], map: "idx_user_deleted_at")
@@ -373,6 +382,10 @@ model Resident {
   staffAssignments ResidentStaffAssignment[]
   parents          ResidentParent[]
 
+  assessments    Assessment[]
+  iepPlans       IepPlan[]
+  adlAssignments AdlAssignment[]
+
   @@index([status], map: "idx_resident_status")
   @@index([lastName, firstName], map: "idx_resident_name")
   @@index([deletedAt], map: "idx_resident_deleted_at")
@@ -431,4 +444,195 @@ model ResidentParent {
   @@unique([residentId, parentUserId], map: "uq_resident_parent")
   @@index([parentUserId], map: "idx_resident_parent_user")
   @@map("resident_parents")
+}
+
+// ─────────────────────────────────────────────────────────
+// ASSESSMENTS
+// ─────────────────────────────────────────────────────────
+
+/// Catalogue of assessment types. Names and domains are descriptive, with
+/// simplified rubrics of our own — this is NOT an implementation of
+/// ADOS-2, CARS-2, Vineland-3, ISAA or any other licensed instrument.
+model AssessmentType {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @map("assessment_type_id") @db.Uuid
+  name        String         @db.VarChar(200)
+  code        String         @unique @db.VarChar(50)
+  domain      ClinicalDomain
+  description String?        @db.Text
+  isActive    Boolean        @default(true) @map("is_active")
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?      @map("deleted_at") @db.Timestamptz(6)
+
+  assessments Assessment[]
+
+  @@index([domain], map: "idx_assessment_type_domain")
+  @@map("assessment_types")
+}
+
+model Assessment {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @map("assessment_id") @db.Uuid
+  residentId       String           @map("resident_id") @db.Uuid
+  assessmentTypeId String           @map("assessment_type_id") @db.Uuid
+  assignedToUserId String           @map("assigned_to_user_id") @db.Uuid
+  status           AssessmentStatus @default(PENDING)
+  scheduledAt      DateTime?        @map("scheduled_at") @db.Timestamptz(6)
+  /// Structured answers. Shape is owned by the Zod schema in
+  /// repos/schemas/, not by the database.
+  findings         Json?
+  score            Float?
+  submittedAt      DateTime?        @map("submitted_at") @db.Timestamptz(6)
+  reviewedByUserId String?          @map("reviewed_by_user_id") @db.Uuid
+  reviewNotes      String?          @map("review_notes") @db.Text
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  resident       Resident       @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  assessmentType AssessmentType @relation(fields: [assessmentTypeId], references: [id])
+  assignedTo     User           @relation("AssessmentAssignee", fields: [assignedToUserId], references: [id])
+  reviewedBy     User?          @relation("AssessmentReviewer", fields: [reviewedByUserId], references: [id])
+
+  @@index([residentId, status], map: "idx_assessment_resident_status")
+  @@index([assignedToUserId, status], map: "idx_assessment_assignee_status")
+  @@map("assessments")
+}
+
+// ─────────────────────────────────────────────────────────
+// IEP PLANS AND GOALS
+// ─────────────────────────────────────────────────────────
+
+model IepPlan {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @map("iep_plan_id") @db.Uuid
+  residentId       String    @map("resident_id") @db.Uuid
+  version          Int
+  status           IepStatus @default(DRAFT_IEP)
+  authoredByUserId String    @map("authored_by_user_id") @db.Uuid
+  submittedAt      DateTime? @map("submitted_at") @db.Timestamptz(6)
+  approvedByUserId String?   @map("approved_by_user_id") @db.Uuid
+  approvedAt       DateTime? @map("approved_at") @db.Timestamptz(6)
+  startDate        DateTime? @map("start_date") @db.Date
+  endDate          DateTime? @map("end_date") @db.Date
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  resident   Resident  @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  authoredBy User      @relation("IepAuthor", fields: [authoredByUserId], references: [id])
+  approvedBy User?     @relation("IepApprover", fields: [approvedByUserId], references: [id])
+  goals      IepGoal[]
+
+  @@unique([residentId, version], map: "uq_iep_resident_version")
+  @@index([residentId, status], map: "idx_iep_resident_status")
+  @@map("iep_plans")
+}
+
+model IepGoal {
+  id              String                @id @default(dbgenerated("gen_random_uuid()")) @map("iep_goal_id") @db.Uuid
+  iepPlanId       String                @map("iep_plan_id") @db.Uuid
+  domain          ClinicalDomain
+  title           String                @db.VarChar(255)
+  description     String                @db.Text
+  frequency       GoalFrequency
+  targetCount     Int                   @map("target_count")
+  status          GoalStatus            @default(NOT_STARTED)
+  approvalStatus  IepGoalApprovalStatus @default(NOT_SUBMITTED) @map("approval_status")
+  /// Required when approvalStatus is REJECTED_MDT. Rejection is one-shot:
+  /// a rejected goal is never resubmitted, a new goal replaces it.
+  rejectionReason String?               @map("rejection_reason") @db.Text
+  assignedRole    IepAssignedRole       @map("assigned_role")
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  iepPlan      IepPlan           @relation(fields: [iepPlanId], references: [id], onDelete: Cascade)
+  progressLogs GoalProgressLog[]
+
+  @@index([iepPlanId], map: "idx_iep_goal_plan")
+  @@index([domain, status], map: "idx_iep_goal_domain_status")
+  @@map("iep_goals")
+}
+
+/// One row per goal session. Primary signal for the ML trajectory layer.
+model GoalProgressLog {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @map("goal_progress_log_id") @db.Uuid
+  iepGoalId      String        @map("iep_goal_id") @db.Uuid
+  loggedByUserId String        @map("logged_by_user_id") @db.Uuid
+  logDate        DateTime      @map("log_date") @db.Date
+  outcome        IepLogOutcome
+  promptLevel    PromptLevel?  @map("prompt_level")
+  notes          String?       @db.Text
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  iepGoal  IepGoal @relation(fields: [iepGoalId], references: [id], onDelete: Cascade)
+  loggedBy User    @relation(fields: [loggedByUserId], references: [id])
+
+  @@index([iepGoalId, logDate], map: "idx_goal_progress_goal_date")
+  @@index([logDate], map: "idx_goal_progress_date")
+  @@map("goal_progress_logs")
+}
+
+// ─────────────────────────────────────────────────────────
+// ACTIVITIES OF DAILY LIVING
+// ─────────────────────────────────────────────────────────
+
+model AdlActivity {
+  id          String      @id @default(dbgenerated("gen_random_uuid()")) @map("adl_activity_id") @db.Uuid
+  name        String      @db.VarChar(200)
+  code        String      @unique @db.VarChar(50)
+  category    AdlCategory
+  description String?     @db.Text
+  isActive    Boolean     @default(true) @map("is_active")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt   DateTime?   @map("deleted_at") @db.Timestamptz(6)
+
+  assignments AdlAssignment[]
+
+  @@index([category], map: "idx_adl_activity_category")
+  @@map("adl_activities")
+}
+
+model AdlAssignment {
+  id               String        @id @default(dbgenerated("gen_random_uuid()")) @map("adl_assignment_id") @db.Uuid
+  residentId       String        @map("resident_id") @db.Uuid
+  adlActivityId    String        @map("adl_activity_id") @db.Uuid
+  assignedByUserId String        @map("assigned_by_user_id") @db.Uuid
+  frequency        GoalFrequency
+  isActive         Boolean       @default(true) @map("is_active")
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  resident    Resident    @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  adlActivity AdlActivity @relation(fields: [adlActivityId], references: [id])
+  assignedBy  User        @relation(fields: [assignedByUserId], references: [id])
+  logs        AdlLog[]
+
+  @@unique([residentId, adlActivityId], map: "uq_adl_assignment_resident_activity")
+  @@index([residentId, isActive], map: "idx_adl_assignment_resident_active")
+  @@map("adl_assignments")
+}
+
+/// One log per (assignment, date, shift). Primary signal for the ML layer.
+model AdlLog {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @map("adl_log_id") @db.Uuid
+  adlAssignmentId  String            @map("adl_assignment_id") @db.Uuid
+  loggedByUserId   String            @map("logged_by_user_id") @db.Uuid
+  logDate          DateTime          @map("log_date") @db.Date
+  shift            Shift
+  status           AdlLogStatus      @default(TODO)
+  promptLevel      PromptLevel?      @map("prompt_level")
+  mood             AdlMood?
+  notes            String?           @db.Text
+  approvalStatus   AdlApprovalStatus @default(DRAFT) @map("approval_status")
+  approvedByUserId String?           @map("approved_by_user_id") @db.Uuid
+  rejectionReason  String?           @map("rejection_reason") @db.Text
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  adlAssignment AdlAssignment @relation(fields: [adlAssignmentId], references: [id], onDelete: Cascade)
+  loggedBy      User          @relation("AdlLogger", fields: [loggedByUserId], references: [id])
+  approvedBy    User?         @relation("AdlApprover", fields: [approvedByUserId], references: [id])
+
+  @@unique([adlAssignmentId, logDate, shift], map: "uq_adl_log_assignment_date_shift")
+  @@index([logDate, approvalStatus], map: "idx_adl_log_date_approval")
+  @@index([approvalStatus], map: "idx_adl_log_approval")
+  @@map("adl_logs")
 }
