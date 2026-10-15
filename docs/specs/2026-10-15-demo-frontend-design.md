@@ -48,7 +48,7 @@ web/src/
 
 **Sample data.** `src/data/` holds typed records whose field names and enum values match `backend/prisma/schema.prisma` exactly (the 13 users and 10 residents mirror the backend seed). Added on top: care teams, parent links, assessments in every status, IEP plans and goals, ~4 weeks of ADL and goal-progress logs, incidents in every status, calendar slots for the current week, notifications per user, and per-resident development trajectories and risk flags with top factors. All synthetic.
 
-**Data source.** `lib/data-source.ts` exposes async functions (`listResidents`, `getResident`, `submitAssessment`, `reviewGoal`, `createAdlLog`, …) backed by the in-memory Zustand store. Pages never touch `src/data/` or the store directly. In later phases each function's body is replaced by an `api-client` call; signatures stay.
+**Data source.** `lib/data-source.ts` exposes React hooks for reads (`useQuery(listResidents, { q })`, …) and a `useActions()` hook for mutations (`submitAssessment`, `reviewIepGoal`, `createAdlLog`, …), backed by pure, unit-tested domain functions over the in-memory Zustand store. Hooks keep every view live (e.g. the notification bell updates the moment an action fires). Pages never touch `src/data/` or the store directly. In later phases the hook internals are replaced by `api-client` calls; page code stays.
 
 **Permissions.** `lib/permissions.ts` encodes parent spec §3.1: nav items per role, detail-page tabs per role, and which action buttons render. Scoping is applied in the data source: PSS and JR_PSYCHOLOGIST see only residents they are assigned to; PARENT sees only their linked child.
 
