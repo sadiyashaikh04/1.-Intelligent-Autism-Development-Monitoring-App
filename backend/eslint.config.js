@@ -31,8 +31,10 @@ export default tseslint.config(
     },
   },
   {
-    // configs.ts is the one legitimate reader of the environment.
-    files: ["src/config/configs.ts"],
+    // configs.ts is the one legitimate reader of the environment inside the
+    // app. prisma.config.ts is read by the Prisma CLI, which runs as its own
+    // process before the app (and its config singleton) exists.
+    files: ["src/config/configs.ts", "prisma.config.ts"],
     rules: { "no-restricted-properties": "off" },
   },
   { ignores: ["node_modules/", "dist/", "prisma/migrations/"] },

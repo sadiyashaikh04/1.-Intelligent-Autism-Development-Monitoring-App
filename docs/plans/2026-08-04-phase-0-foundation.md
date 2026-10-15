@@ -1189,17 +1189,18 @@ never leak."
 
 ---
 
-## Task 6: Prisma schema — enums, identity, and residents
+## Task 6: Prisma schema — enums, identity, and residents — ✅ DONE (2026-10-15)
 
 **Files:**
 - Create: `backend/prisma.config.ts`
 - Create: `backend/prisma/schema.prisma`
+- Modify: `backend/eslint.config.js` (exempt `prisma.config.ts` from the env rule)
 
 **Interfaces:**
 - Consumes: `DATABASE_URL` from the environment (read by Prisma's own config, not by `@/config/configs` — Prisma CLI runs outside the app).
 - Produces: enums and the models `User`, `UserSession`, `AuditLog`, `Resident`, `ResidentStatusHistory`, `ResidentStaffAssignment`, `ResidentParent`. Tasks 7 and 8 add back-relation fields to `User` and `Resident`.
 
-- [ ] **Step 1: Write `backend/prisma.config.ts`**
+- [x] **Step 1: Write `backend/prisma.config.ts`**
 
 ```typescript
 // Prisma 7 config. Bun auto-loads env files, so no dotenv is needed.
@@ -1219,9 +1220,11 @@ export default defineConfig({
 });
 ```
 
-This is the one file outside `configs.ts` that reads `process.env`, because the Prisma CLI runs as a separate process before the app exists. It is excluded from the lint rule by living outside `src/`.
+This is the one file outside `configs.ts` that reads `process.env`, because the Prisma CLI runs as a separate process before the app exists. The `no-restricted-properties` lint rule applies to every file, not just `src/`, so `prisma.config.ts` is added to the same override block that exempts `configs.ts` in `eslint.config.js`.
 
-- [ ] **Step 2: Write the schema header and every enum**
+> **Ruling, 2026-10-15:** the original text claimed living outside `src/` was enough; `bun run check` proved otherwise.
+
+- [x] **Step 2: Write the schema header and every enum**
 
 Create `backend/prisma/schema.prisma`:
 
@@ -1511,7 +1514,7 @@ enum NotificationSeverity {
 }
 ```
 
-- [ ] **Step 3: Append the identity models**
+- [x] **Step 3: Append the identity models**
 
 Append to `backend/prisma/schema.prisma`:
 
@@ -1588,7 +1591,7 @@ model AuditLog {
 
 `AuditLog` has no `updatedAt` on purpose — it is append-only. Rewriting an audit row would defeat its point.
 
-- [ ] **Step 4: Append the resident models**
+- [x] **Step 4: Append the resident models**
 
 ```prisma
 // ─────────────────────────────────────────────────────────
@@ -1642,8 +1645,9 @@ model ResidentStaffAssignment {
   userId       String              @map("user_id") @db.Uuid
   role         StaffAssignmentRole
   assignedAt   DateTime            @default(now()) @map("assigned_at") @db.Timestamptz(6)
-  /// Null means the assignment is currently active. The partial unique
-  /// index below relies on this.
+  /// Null means the assignment is currently active. At most one active
+  /// row per (resident, user, role) is enforced by a partial unique index
+  /// that Prisma cannot express; it is raw SQL in the initial migration.
   unassignedAt DateTime?           @map("unassigned_at") @db.Timestamptz(6)
   createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -1673,7 +1677,7 @@ model ResidentParent {
 }
 ```
 
-- [ ] **Step 5: Validate and format the schema**
+- [x] **Step 5: Validate and format the schema**
 
 ```bash
 cd backend
@@ -1683,11 +1687,11 @@ bun run db:validate
 
 Expected: `The schema at prisma/schema.prisma is valid 🚀`. If validation complains about a missing opposite relation field, a relation was added on one side only — every `@relation` needs a matching array or optional field on the other model.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd .. && git status --short
-git add backend/prisma.config.ts backend/prisma/schema.prisma
+git add backend/prisma.config.ts backend/prisma/schema.prisma backend/eslint.config.js
 git commit -m "feat(backend): add prisma enums, identity and resident models
 
 28 enums plus User, UserSession, AuditLog, Resident and its status
@@ -2221,10 +2225,30 @@ when survives as an audit trail."
 ```bash
 cd backend
 bun run db:generate
-bunx prisma migrate dev --name init
+bunx prisma migrate dev --name init --create-only
 ```
 
-Expected: a new folder `prisma/migrations/<timestamp>_init/` containing `migration.sql`, and `Your database is now in sync with your schema.`
+Expected: a new folder `prisma/migrations/<timestamp>_init/` containing `migration.sql`, not yet applied.
+
+Append the partial unique index the spec requires (§4.2, `ResidentStaffAssignment`) — Prisma's schema language cannot express a `WHERE` clause on an index, so it lives in the migration:
+
+```sql
+-- At most one ACTIVE assignment per (resident, user, role). Ended
+-- assignments (unassigned_at set) are history and may repeat.
+CREATE UNIQUE INDEX "uq_staff_assignment_active"
+  ON "resident_staff_assignments" ("resident_id", "user_id", "role")
+  WHERE "unassigned_at" IS NULL;
+```
+
+Then apply it:
+
+```bash
+bunx prisma migrate dev
+```
+
+Expected: `Your database is now in sync with your schema.` Confirm the index exists with `psql ... -c '\d resident_staff_assignments'`.
+
+> **Added 2026-10-15** while executing Task 6: the original plan never created this index, only mentioned it in a schema comment.
 
 If this errors with "can't reach database server", the local Postgres is not running — `brew services start postgresql@17`, then retry.
 

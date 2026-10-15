@@ -1,0 +1,434 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────
+
+enum UserRole {
+  SUPER_ADMIN
+  CSC
+  JR_PSYCHOLOGIST
+  MDT_HEAD
+  PSS
+  PARENT
+
+  @@map("user_role")
+}
+
+enum ClinicalDomain {
+  PSYCHOLOGY
+  OCCUPATIONAL_THERAPY
+  SPEECH_THERAPY
+  SPECIAL_EDUCATION
+
+  @@map("clinical_domain")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+
+  @@map("gender")
+}
+
+enum ProgramType {
+  COMMUNITY
+  FAMILY_LIVING
+
+  @@map("program_type")
+}
+
+enum ResidentStatus {
+  IMPORTED
+  ENROLLED
+  CSC_ASSIGNED
+  MDT_ASSIGNED
+  ASSESSMENTS_SCHEDULED
+  ASSESSMENTS_IN_PROGRESS
+  ASSESSMENTS_COMPLETED
+  IEP_IN_PROGRESS
+  IEP_APPROVED
+  ACTIVE
+  INACTIVE
+
+  @@map("resident_status")
+}
+
+enum StaffAssignmentRole {
+  CSC
+  PSS
+  JR_PSYCHOLOGIST
+  MDT_HEAD
+
+  @@map("staff_assignment_role")
+}
+
+enum AssessmentStatus {
+  PENDING
+  SCHEDULED
+  IN_PROGRESS
+  SUBMITTED
+  APPROVED
+  REVISION_REQUESTED
+
+  @@map("assessment_status")
+}
+
+enum IepStatus {
+  DRAFT_IEP
+  SUBMITTED_IEP
+  APPROVED_IEP
+  ACTIVE_IEP
+  COMPLETED_IEP
+  REJECTED_IEP
+
+  @@map("iep_status")
+}
+
+enum IepGoalApprovalStatus {
+  NOT_SUBMITTED
+  PENDING_MDT_APPROVAL
+  APPROVED_MDT
+  REJECTED_MDT
+
+  @@map("iep_goal_approval_status")
+}
+
+enum IepAssignedRole {
+  PSS
+  CLINICIAN
+
+  @@map("iep_assigned_role")
+}
+
+enum GoalFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+
+  @@map("goal_frequency")
+}
+
+enum GoalStatus {
+  NOT_STARTED
+  IN_PROGRESS_GOAL
+  ACHIEVED
+  PARTIALLY_ACHIEVED
+  DISCONTINUED_GOAL
+
+  @@map("goal_status")
+}
+
+enum IepLogOutcome {
+  ACHIEVED_LOG
+  PARTIALLY_ACHIEVED_LOG
+  NOT_ACHIEVED_LOG
+
+  @@map("iep_log_outcome")
+}
+
+enum PromptLevel {
+  INDEPENDENT
+  VERBAL
+  GESTURAL
+  PARTIAL_PHYSICAL
+  FULL_PHYSICAL
+
+  @@map("prompt_level")
+}
+
+enum Shift {
+  MORNING
+  EVENING
+  NIGHT
+
+  @@map("shift")
+}
+
+enum AdlCategory {
+  ADL
+  IADL
+
+  @@map("adl_category")
+}
+
+enum AdlLogStatus {
+  TODO
+  IN_PROGRESS_ADL
+  DONE
+
+  @@map("adl_log_status")
+}
+
+enum AdlApprovalStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+
+  @@map("adl_approval_status")
+}
+
+enum AdlMood {
+  CALM
+  ANXIOUS
+  ESCALATED
+  MELTDOWN
+
+  @@map("adl_mood")
+}
+
+enum RoomType {
+  THERAPY
+  ASSESSMENT_ROOM
+  CONSULTATION
+  CLASSROOM
+  GENERAL
+
+  @@map("room_type")
+}
+
+enum SlotType {
+  ASSESSMENT_SLOT
+  THERAPY_SESSION
+  IPP_ACTIVITY
+  IPP_MEETING_SLOT
+  GENERAL_SLOT
+
+  @@map("slot_type")
+}
+
+enum SlotStatus {
+  SCHEDULED_SLOT
+  CONFIRMED
+  IN_PROGRESS_SLOT
+  COMPLETED_SLOT
+  CANCELLED_SLOT
+
+  @@map("slot_status")
+}
+
+enum IncidentType {
+  INJURY
+  AGGRESSION
+  MELTDOWN
+  SELF_HARM
+  FALL
+  ELOPEMENT
+  OTHER_INCIDENT
+
+  @@map("incident_type")
+}
+
+enum IncidentStatus {
+  REPORTED
+  UNDER_REVIEW
+  ESCALATED
+  RESOLVED
+  CLOSED
+
+  @@map("incident_status")
+}
+
+enum TrajectoryDirection {
+  IMPROVING
+  STABLE
+  DECLINING
+  INSUFFICIENT_DATA
+
+  @@map("trajectory_direction")
+}
+
+enum RiskBand {
+  LOW
+  MEDIUM
+  HIGH
+
+  @@map("risk_band")
+}
+
+enum NotificationType {
+  CARE_TEAM_ASSIGNED
+  ASSESSMENT_SCHEDULED
+  ASSESSMENT_COMPLETED
+  ASSESSMENT_APPROVED
+  ASSESSMENT_REVISION_REQUESTED
+  IEP_SUBMITTED
+  IEP_APPROVED
+  IPP_FINALIZED
+  ADL_LOG_REJECTED
+  INCIDENT_REPORTED
+  INCIDENT_ESCALATED
+  INCIDENT_RESOLVED
+  SESSION_REMINDER
+  PERFORMANCE_DECLINE_DETECTED
+  ELEVATED_RISK_FLAGGED
+
+  @@map("notification_type")
+}
+
+enum NotificationSeverity {
+  NORMAL
+  HIGH
+  CRITICAL_INTERRUPT
+
+  @@map("notification_severity")
+}
+
+// ─────────────────────────────────────────────────────────
+// IDENTITY & AUDIT
+// ─────────────────────────────────────────────────────────
+
+model User {
+  id             String          @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
+  email          String          @unique @db.VarChar(255)
+  passwordHash   String          @map("password_hash") @db.VarChar(255)
+  firstName      String          @map("first_name") @db.VarChar(100)
+  lastName       String          @map("last_name") @db.VarChar(100)
+  role           UserRole
+  /// Set only for clinical roles; NULL for SUPER_ADMIN, CSC and PARENT.
+  clinicalDomain ClinicalDomain? @map("clinical_domain")
+  isActive       Boolean         @default(true) @map("is_active")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?       @map("deleted_at") @db.Timestamptz(6)
+
+  sessions         UserSession[]
+  auditLogs        AuditLog[]
+  statusChanges    ResidentStatusHistory[]
+  staffAssignments ResidentStaffAssignment[]
+  parentLinks      ResidentParent[]
+
+  @@index([role], map: "idx_user_role")
+  @@index([isActive], map: "idx_user_active")
+  @@index([deletedAt], map: "idx_user_deleted_at")
+  @@map("users")
+}
+
+model UserSession {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @map("session_id") @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  /// SHA-256 of the refresh token. The raw token is never stored.
+  refreshTokenHash String    @map("refresh_token_hash") @db.VarChar(255)
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(6)
+  userAgent        String?   @map("user_agent") @db.VarChar(500)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([refreshTokenHash], map: "uq_session_refresh_hash")
+  @@index([userId], map: "idx_session_user")
+  @@index([expiresAt], map: "idx_session_expires")
+  @@map("user_sessions")
+}
+
+model AuditLog {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @map("audit_log_id") @db.Uuid
+  /// Null for system-initiated changes such as the nightly insights job.
+  actorUserId String?  @map("actor_user_id") @db.Uuid
+  action      String   @db.VarChar(100)
+  entityType  String   @map("entity_type") @db.VarChar(100)
+  entityId    String   @map("entity_id") @db.Uuid
+  before      Json?
+  after       Json?
+  ipAddress   String?  @map("ip_address") @db.VarChar(45)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([entityType, entityId], map: "idx_audit_entity")
+  @@index([actorUserId], map: "idx_audit_actor")
+  @@index([createdAt], map: "idx_audit_created_at")
+  @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────
+// RESIDENTS
+// ─────────────────────────────────────────────────────────
+
+model Resident {
+  id            String         @id @default(dbgenerated("gen_random_uuid()")) @map("resident_id") @db.Uuid
+  code          String         @unique @db.VarChar(20)
+  firstName     String         @map("first_name") @db.VarChar(100)
+  lastName      String         @map("last_name") @db.VarChar(100)
+  dateOfBirth   DateTime       @map("date_of_birth") @db.Date
+  gender        Gender
+  programType   ProgramType    @map("program_type")
+  status        ResidentStatus @default(IMPORTED)
+  admissionDate DateTime?      @map("admission_date") @db.Date
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt     DateTime?      @map("deleted_at") @db.Timestamptz(6)
+
+  statusHistory    ResidentStatusHistory[]
+  staffAssignments ResidentStaffAssignment[]
+  parents          ResidentParent[]
+
+  @@index([status], map: "idx_resident_status")
+  @@index([lastName, firstName], map: "idx_resident_name")
+  @@index([deletedAt], map: "idx_resident_deleted_at")
+  @@map("residents")
+}
+
+model ResidentStatusHistory {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @map("status_history_id") @db.Uuid
+  residentId      String          @map("resident_id") @db.Uuid
+  /// Null only for the very first row, when the resident was created.
+  fromStatus      ResidentStatus? @map("from_status")
+  toStatus        ResidentStatus  @map("to_status")
+  changedByUserId String          @map("changed_by_user_id") @db.Uuid
+  reason          String?         @db.Text
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  resident  Resident @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  changedBy User     @relation(fields: [changedByUserId], references: [id])
+
+  @@index([residentId, createdAt], map: "idx_status_history_resident")
+  @@map("resident_status_history")
+}
+
+model ResidentStaffAssignment {
+  id           String              @id @default(dbgenerated("gen_random_uuid()")) @map("assignment_id") @db.Uuid
+  residentId   String              @map("resident_id") @db.Uuid
+  userId       String              @map("user_id") @db.Uuid
+  role         StaffAssignmentRole
+  assignedAt   DateTime            @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  /// Null means the assignment is currently active. At most one active
+  /// row per (resident, user, role) is enforced by a partial unique index
+  /// that Prisma cannot express; it is raw SQL in the initial migration.
+  unassignedAt DateTime?           @map("unassigned_at") @db.Timestamptz(6)
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  resident Resident @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@index([residentId, role], map: "idx_staff_assignment_resident_role")
+  @@index([userId], map: "idx_staff_assignment_user")
+  @@map("resident_staff_assignments")
+}
+
+model ResidentParent {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @map("resident_parent_id") @db.Uuid
+  residentId   String   @map("resident_id") @db.Uuid
+  parentUserId String   @map("parent_user_id") @db.Uuid
+  relationship String   @db.VarChar(50)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  resident Resident @relation(fields: [residentId], references: [id], onDelete: Cascade)
+  parent   User     @relation(fields: [parentUserId], references: [id])
+
+  @@unique([residentId, parentUserId], map: "uq_resident_parent")
+  @@index([parentUserId], map: "idx_resident_parent_user")
+  @@map("resident_parents")
+}
