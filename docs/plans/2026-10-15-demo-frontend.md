@@ -59,7 +59,7 @@
 
 ---
 
-## Task 1: Scaffold, theme, types, sample data, domain logic, stores
+## Task 1: Scaffold, theme, types, sample data, domain logic, stores — ✅ DONE (2026-10-15)
 
 **Files:** create everything under `web/` listed above except pages and layout components.
 
@@ -100,14 +100,14 @@ Mutations in Task 1 (all append status history / notifications per parent spec �
 
 Queries in Task 1: `listResidents(db, viewer, { q?, status? })`, `getResidentDetail(db, viewer, id)`, `listAssessments(db, viewer)`, `listIepPlans(db, viewer)`, `getIepPlan(db, viewer, id)`, `listPssAssignments(db, viewer)`, `listAdlLogs(db, viewer, { residentId?, approvalStatus? })`, `listIncidents(db, viewer)`, `listCalendarSlots(db, viewer, weekStart)`, `listNotifications(db, viewer)`, `unreadCount(db, viewer)`, `getDevelopment(db, viewer, residentId)`, `listDeclineFlags(db, viewer)`, `listRiskBoard(db, viewer)`, `dashboardFor(db, viewer)`.
 
-- [ ] **Step 1:** Scaffold: `bunx create-next-app@16.4.1 web --ts --tailwind --eslint --app --src-dir --import-alias "@/*" --use-bun --no-turbopack --yes`; add `zustand`, `recharts`; add `"test": "bun test"`; delete boilerplate page content; set `<title>IADM</title>`.
-- [ ] **Step 2:** Write `tests/domain/permissions.test.ts`, `transitions.test.ts`, `queries.test.ts`, `mutations.test.ts` covering: each role's nav keys; `canAccessRoute("PSS","/user-management") === false`; `IMPORTED → ENROLLED` allowed, `IMPORTED → ACTIVE` refused; PSS `listResidents` returns only assigned; PARENT `getResidentDetail` of a non-child returns `null`; duplicate `createAdlLog` returns an error; `reviewIepGoal` reject without reason errors; plan becomes `APPROVED_IEP` once all goals decided with ≥1 approved, `REJECTED_IEP` when all rejected; `reportIncident` notifies care team and (if `notifyParent`) the parent; `reviewIncident` escalate sets severity `CRITICAL_INTERRUPT`.
-- [ ] **Step 3:** Run `bun run test` — Expected: FAIL (modules missing).
-- [ ] **Step 4:** Implement `types.ts`, `seed/*`, `domain/*`, `format.ts`, stores, `data-source.ts`.
-- [ ] **Step 5:** `bun run test` → PASS; `bun run lint && bun run build` → pass.
-- [ ] **Step 6:** Commit `feat(web): scaffold next app with sample data and domain logic`.
+- [x] **Step 1:** Scaffold: `bunx create-next-app@16.4.1 web --ts --tailwind --eslint --app --src-dir --import-alias "@/*" --use-bun --no-turbopack --yes`; add `zustand`, `recharts`; add `"test": "bun test"`; delete boilerplate page content; set `<title>IADM</title>`.
+- [x] **Step 2:** Write `tests/domain/permissions.test.ts`, `transitions.test.ts`, `queries.test.ts`, `mutations.test.ts` covering: each role's nav keys; `canAccessRoute("PSS","/user-management") === false`; `IMPORTED → ENROLLED` allowed, `IMPORTED → ACTIVE` refused; PSS `listResidents` returns only assigned; PARENT `getResidentDetail` of a non-child returns `null`; duplicate `createAdlLog` returns an error; `reviewIepGoal` reject without reason errors; plan becomes `APPROVED_IEP` once all goals decided with ≥1 approved, `REJECTED_IEP` when all rejected; `reportIncident` notifies care team and (if `notifyParent`) the parent; `reviewIncident` escalate sets severity `CRITICAL_INTERRUPT`.
+- [x] **Step 3:** Run `bun run test` — Expected: FAIL (modules missing).
+- [x] **Step 4:** Implement `types.ts`, `seed/*`, `domain/*`, `format.ts`, stores, `data-source.ts`.
+- [x] **Step 5:** `bun run test` → PASS; `bun run lint && bun run build` → pass.
+- [x] **Step 6:** Commit `feat(web): scaffold next app with sample data and domain logic`.
 
-## Task 2: Login, shell, navigation, guard, notifications bell
+## Task 2: Login, shell, navigation, guard, notifications bell — ✅ DONE (2026-10-15)
 
 - Login `/login`: centred card, IADM wordmark, 6 role quick-pick buttons (name + role), email field accepting any seeded email, password field (not checked), note "Demo mode — real authentication arrives in Phase 1." Unknown email → inline error. Inactive user → "This account is deactivated".
 - `(protected)/layout.tsx`: waits for auth-store hydration; no user → redirect `/login`; `canAccessRoute` false → in-shell "You don't have access to this page" with link to dashboard.
@@ -116,7 +116,7 @@ Queries in Task 1: `listResidents(db, viewer, { q?, status? })`, `getResidentDet
 - **Checks:** each role signs in and sees only its nav; refresh keeps session; PSS typing `/user-management` sees the no-access message; 360px layout has no horizontal scroll.
 - Commit `feat(web): add demo login, role-based shell and route guard`.
 
-## Task 3: Service Users list + detail
+## Task 3: Service Users list + detail — ✅ DONE (2026-10-15)
 
 - List: search (code/name), status select, table ≥ md, cards < md, status chip, age, programme, row → detail. Title "My Service Users" for PSS/JR_PSYCHOLOGIST.
 - Detail: header (name, code, chip, age, programme, admission); tabs from `detailTabsFor(role)`: Overview, History (timeline), Care team (+ parents), Assessments, IEP (goals + progress), ADL (recent logs), Development (trajectory mini-chart; Task 8 fills). CSC sees "Advance status" with allow-listed next statuses + reason → `advanceResidentStatus`.
@@ -124,7 +124,7 @@ Queries in Task 1: `listResidents(db, viewer, { q?, status? })`, `getResidentDet
 - **Checks:** PSS sees only assigned; CSC advances `IMPORTED → ENROLLED` and history shows it; parent id URL of other child → not found.
 - Commit `feat(web): add service user list and detail`.
 
-## Task 4: PSS — ADL logging, goal progress, report incident (mobile-first)
+## Task 4: PSS — ADL logging, goal progress, report incident (mobile-first) — ✅ DONE (2026-10-15)
 
 - `/adl-tracking` for PSS: resident select (assigned only), date defaults today, shift defaults by clock (06–14 MORNING, 14–22 EVENING, else NIGHT); per assignment: status segmented buttons (TODO / IN_PROGRESS / DONE), prompt level select, mood buttons (CALM/ANXIOUS/ESCALATED/MELTDOWN), notes; sticky "Submit log"; duplicate → inline error; success toast. Below: "Today's logs" with approval status.
 - Goal progress: on the resident's IEP tab and on Today page — outcome + prompt level + notes → `logGoalProgress`.
@@ -132,20 +132,20 @@ Queries in Task 1: `listResidents(db, viewer, { q?, status? })`, `getResidentDet
 - **Checks:** at 360×640 every control ≥ 44px, no horizontal scroll, open → tap status → tap mood → submit works without the date picker.
 - Commit `feat(web): add mobile-first ADL logging and incident reporting`.
 
-## Task 5: Assessments + IEP
+## Task 5: Assessments + IEP — ✅ DONE (2026-10-15)
 
 - `/assessment`: CSC — table of residents needing assessments + "Schedule" (type, clinician, room, datetime) → `scheduleAssessment` (creates calendar slot + notification). JR_PSYCHOLOGIST — "My assessments" queue; `/assessment/[id]` → Start → findings form (3–5 rated items per type, 1–5 scale, summary notes) → Submit. MDT_HEAD — "Awaiting review" list; detail shows findings → Approve / Request revision (notes required).
 - `/iep`: JR_PSYCHOLOGIST — plans list + "Create plan" for `ASSESSMENTS_COMPLETED` residents; `/iep/[id]` builder: add goal (domain, title, description, frequency, target, assigned role), Submit plan. MDT_HEAD — goals pending approval grouped by plan; Approve / Reject (reason required). CSC — approved plans → "Activate" (resident → ACTIVE).
 - **Checks:** full workflow 5.2 on one resident across three roles by signing out/in; statuses and notifications update.
 - Commit `feat(web): add assessment and IEP workflows`.
 
-## Task 6: Role dashboards
+## Task 6: Role dashboards — ✅ DONE (2026-10-15)
 
 - `dashboardFor` drives cards per role: SUPER_ADMIN (users by role, residents by status, open incidents); CSC (residents by status, pending ADL approvals, assessments to schedule, open incidents); JR_PSYCHOLOGIST (my assessments by status, plans in draft, my residents); MDT_HEAD (awaiting review, goals pending, escalated incidents, high-risk count); PSS "Today" (today's ADL progress per resident, sessions today, report-incident shortcut).
 - Each card links to the relevant page. Residents-by-status as a horizontal bar list (no chart library needed).
 - Commit `feat(web): add role dashboards`.
 
-## Task 7: Incidents, ADL approval queue, calendar, notifications
+## Task 7: Incidents, ADL approval queue, calendar, notifications — ✅ DONE (2026-10-15)
 
 - `/incidents`: list with status/type filters (PSS: own reports + assigned residents). `/incidents/[id]`: details + timeline; MDT_HEAD Start review / Escalate / Resolve (resolution required); CSC Close.
 - `/adl-tracking` for CSC: pending-approval queue → Approve / Reject (reason) → `reviewAdlLog`.
@@ -153,18 +153,18 @@ Queries in Task 1: `listResidents(db, viewer, { q?, status? })`, `getResidentDet
 - `/notifications`: list, unread emphasis, mark one / all read; bell count updates live.
 - Commit `feat(web): add incidents, ADL approvals, calendar and notifications`.
 
-## Task 8: Insights
+## Task 8: Insights — ✅ DONE (2026-10-15)
 
 - `/insights`: banner "Synthetic data — the model only flags; a clinician decides." Decline flags list; risk board (MDT_HEAD, CSC, ADMIN, JR_PSYCH scoped; never PSS/PARENT) with band chip, score, and plain-language top factors.
 - Resident Development tab: Recharts line chart of `independenceIndex` per domain over 8+ weeks, trajectory chips, "last computed" timestamp.
 - Commit `feat(web): add insights trajectories and risk board`.
 
-## Task 9: Parent view
+## Task 9: Parent view — ✅ DONE (2026-10-15)
 
 - `/my-child`: child switcher if >1 child; profile, status in plain words, care team names; Progress section: goal progress bars, ADL completion this week, trajectory sentences ("steady progress in communication over the last month"); never a risk score. Notifications reachable from header.
 - Commit `feat(web): add parent web view`.
 
-## Task 10: User management + catalogues; final pass
+## Task 10: User management + catalogues; final pass — ✅ DONE (2026-10-15)
 
 - `/user-management` (SUPER_ADMIN RW, CSC/MDT_HEAD read-only): table, role filter, "Add user" form, deactivate/reactivate.
 - `/catalogues`: tabs for assessment types, ADL activities, rooms.
@@ -172,3 +172,20 @@ Queries in Task 1: `listResidents(db, viewer, { q?, status? })`, `getResidentDet
 - Root `README.md`: add `web/` status line.
 - Final manual pass: every role, every nav item, at 1280px and 360px.
 - Commit `feat(web): add user management, catalogues and demo readme`.
+
+---
+
+## Execution record (2026-10-15)
+
+All 10 tasks done; `bun run lint`, `bun run test` (46/46) and `bun run build` pass. Verified in headless Chrome: every role × every menu page at 1280px and 360px (82 page views, no overflow, no page errors, no wrong access states), plus workflow 5.2 end to end across psychologist → MDT head → CSC → parent in one session.
+
+**Rulings made while executing** (each: what — why — cost if wrong):
+
+- Sample data adds RES-0011…0016 (6 extra ACTIVE residents) on top of the backend seed's 10 — two active residents made insights and the risk board meaningless — demo shows 16 residents where the backend has 10; flagged in `data/seed/people.ts`.
+- Demo data persists in `sessionStorage` (spec said "resets on refresh") — a multi-role demo must survive a refresh — stale data after a seed change; mitigated by "Reset demo data" in the user menu.
+- `dashboardFor` was not built as a domain function; dashboards compose existing queries — no logic of their own to test — none.
+- Incidents list/detail/review and the CSC ADL approval queue were built in Task 4, not Task 7 — the PSS incident flow needed somewhere to land — none.
+- `cacheComponents` / `partialPrefetching` removed from `next.config.ts` — server-render optimisations that only produced dev-mode validation errors for a client-rendered demo — revisit when pages fetch from the backend.
+- Auth-store hydration flag set via the state's own setter — sessionStorage hydrates synchronously during store creation, before the exported binding exists, which left every page on "Loading…" — none.
+- Insights z-score uses a 0.06 floor on baseline SD — the synthetic baseline is so flat that z reached −8.8 — synthetic values only.
+- Chart palette (`#4f5bc8,#0ea5a4,#e08a1e,#c2417a`) passed the dataviz validator; its contrast WARN is relieved by a legend, spaced direct labels and a table view.

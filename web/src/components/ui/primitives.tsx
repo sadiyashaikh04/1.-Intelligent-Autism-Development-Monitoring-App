@@ -13,7 +13,7 @@ export function Card({
 }) {
   return (
     <div
-      className={`rounded-xl bg-surface shadow-sm ring-1 ring-line ${padded ? "p-4 sm:p-5" : ""} ${className}`}
+      className={`min-w-0 rounded-xl bg-surface shadow-sm ring-1 ring-line ${padded ? "p-4 sm:p-5" : ""} ${className}`}
     >
       {children}
     </div>

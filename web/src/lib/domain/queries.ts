@@ -435,8 +435,10 @@ export function listRiskBoard(db: DemoDb, viewer: Viewer): RiskRow[] {
     .sort((a, b) => b.risk.score - a.risk.score);
 }
 
+const ROLE_ORDER: UserRole[] = ["SUPER_ADMIN", "CSC", "JR_PSYCHOLOGIST", "MDT_HEAD", "PSS", "PARENT"];
+
 export function listUsers(db: DemoDb): User[] {
   return [...db.users].sort(
-    (a, b) => a.role.localeCompare(b.role) || a.email.localeCompare(b.email),
+    (a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role) || a.email.localeCompare(b.email),
   );
 }
