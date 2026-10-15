@@ -38,7 +38,7 @@ function deviation(values: number[]): number | null {
     baseline.reduce((s, v) => s + (v - mean) ** 2, 0) / baseline.length,
   );
   const recentMean = recent.reduce((a, b) => a + b, 0) / recent.length;
-  return Number(((recentMean - mean) / Math.max(sd, 0.02)).toFixed(2));
+  return Number(((recentMean - mean) / Math.max(sd, 0.06)).toFixed(2));
 }
 
 function direction(points: number[]): TrajectoryDirection {
