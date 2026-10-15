@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+/*
+ * IADM design tokens. Our own palette — indigo brand, slate neutrals.
+ * Components use these via Tailwind utilities (bg-brand-600, text-ink-500…),
+ * never raw hex values. Chip tones live in src/config/theme.ts.
+ */
+@theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-50: #eef0fb;
+  --color-brand-100: #dde1f7;
+  --color-brand-200: #bcc3ef;
+  --color-brand-300: #929ee3;
+  --color-brand-400: #6c79d6;
+  --color-brand-500: #4f5bc8;
+  --color-brand-600: #3e47ad;
+  --color-brand-700: #33398c;
+  --color-brand-800: #2a2f6f;
+  --color-brand-900: #1f2352;
+
+  --color-ink-900: #172033;
+  --color-ink-700: #364156;
+  --color-ink-500: #5f6b80;
+  --color-ink-400: #8a94a6;
+
+  --color-surface: #ffffff;
+  --color-canvas: #f6f7fb;
+  --color-line: #e3e6ee;
+}
+
+html,
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink-900);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible keyboard focus everywhere. */
+:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
