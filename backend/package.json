@@ -15,7 +15,7 @@
     "db:generate": "bunx prisma generate",
     "db:migrate:dev": "bunx prisma migrate dev",
     "db:migrate:deploy": "bunx prisma migrate deploy",
-    "db:migrate:reset": "bunx prisma migrate reset --force",
+    "db:migrate:reset": "bunx prisma migrate reset --force && bun run db:seed",
     "db:seed": "bunx prisma db seed",
     "db:validate": "bunx prisma validate",
     "db:format": "bunx prisma format",

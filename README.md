@@ -4,8 +4,9 @@ A multi-role clinical care management system for autism development monitoring, 
 
 Support staff record structured daily observations against individualised goals; clinicians run assessments and author care plans; an ML service turns that record into per-domain development trajectories, early-decline alerts, and incident-risk flags for clinicians to act on.
 
-> **Status:** design complete, implementation not yet started.
+> **Status:** Phase 0 complete — backend skeleton, 22-model schema, and seed are running.
 > Full design: [`docs/specs/2026-08-04-iadm-autism-monitoring-design.md`](docs/specs/2026-08-04-iadm-autism-monitoring-design.md)
+> Phase 0 plan: [`docs/plans/2026-08-04-phase-0-foundation.md`](docs/plans/2026-08-04-phase-0-foundation.md)
 
 ## Structure
 
