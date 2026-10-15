@@ -681,7 +681,7 @@ startup with every offending variable listed, not just the first."
 
 ---
 
-## Task 4: Structured logging
+## Task 4: Structured logging — ✅ DONE (2026-10-15)
 
 **Files:**
 - Create: `backend/src/common/loggerEvents.ts`
@@ -696,7 +696,7 @@ startup with every offending variable listed, not just the first."
   - `logger` (Pino instance) from `@/common/logger`
   - `createRequestLogger(requestId: string)` returning a child logger that stamps `requestId` on every line
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `backend/tests/common/logger.test.ts`:
 
@@ -760,7 +760,7 @@ describe("REDACT_PATHS", () => {
     // this asserts behaviour rather than configuration.
     const lines: string[] = [];
     const probe = pino(
-      { redact: { paths: REDACT_PATHS, censor: "[REDACTED]" } },
+      { redact: { paths: [...REDACT_PATHS], censor: "[REDACTED]" } },
       { write: (line: string) => lines.push(line) },
     );
 
@@ -791,15 +791,15 @@ describe("createRequestLogger", () => {
 });
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 ```bash
-cd backend && bun test tests/common/logger.test.ts
+cd backend && bun run test tests/common/logger.test.ts
 ```
 
 Expected: FAIL — cannot resolve `@/common/loggerEvents`.
 
-- [ ] **Step 3: Write `backend/src/common/loggerEvents.ts`**
+- [x] **Step 3: Write `backend/src/common/loggerEvents.ts`**
 
 ```typescript
 /**
@@ -827,7 +827,7 @@ export const LOGGER_EVENTS = {
 export type LoggerEvent = (typeof LOGGER_EVENTS)[keyof typeof LOGGER_EVENTS];
 ```
 
-- [ ] **Step 4: Write `backend/src/common/logger.ts`**
+- [x] **Step 4: Write `backend/src/common/logger.ts`**
 
 ```typescript
 import pino from "pino";
@@ -879,15 +879,15 @@ export function createRequestLogger(requestId: string) {
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 ```bash
-cd backend && bun test tests/common/logger.test.ts
+cd backend && bun run test tests/common/logger.test.ts
 ```
 
-Expected: PASS, 10 tests. The behavioural redaction test is the important one — it proves a password logged inside a nested object is actually censored, rather than merely proving the config object has the right shape.
+Expected: PASS, 11 tests. The behavioural redaction test is the important one — it proves a password logged inside a nested object is actually censored, rather than merely proving the config object has the right shape.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 cd .. && git status --short
