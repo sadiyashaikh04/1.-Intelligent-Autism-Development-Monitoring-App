@@ -2419,7 +2419,7 @@ new one per file save."
 
 ---
 
-## Task 10: Elysia app, request IDs, error handling, Swagger, and /healthz
+## Task 10: Elysia app, request IDs, error handling, Swagger, and /healthz — ✅ DONE (2026-10-15)
 
 **Files:**
 - Create: `backend/src/routes/health.routes.ts`
@@ -2433,7 +2433,7 @@ new one per file save."
 - Consumes: `config`, `logger`, `LOGGER_EVENTS`, `toErrorResponse`, `NotFoundError`, `prisma`.
 - Produces: `app` (the configured Elysia instance) from `@/app`; `setupRoutes(app)` from `@/routes`; `healthRoutes` from `@/routes/health.routes`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `backend/tests/routes/health.routes.test.ts`:
 
@@ -2441,19 +2441,20 @@ Create `backend/tests/routes/health.routes.test.ts`:
 import { describe, expect, it } from "bun:test";
 import { app } from "@/app";
 
+type HealthBody = {
+  data: { status: string; service: string; version: string; uptime: number };
+  error?: unknown;
+};
+
 describe("GET /healthz", () => {
   it("returns 200", async () => {
-    const response = await app.handle(
-      new Request("http://localhost/healthz"),
-    );
+    const response = await app.handle(new Request("http://localhost/healthz"));
     expect(response.status).toBe(200);
   });
 
   it("reports status, service name and version", async () => {
-    const response = await app.handle(
-      new Request("http://localhost/healthz"),
-    );
-    const body = await response.json();
+    const response = await app.handle(new Request("http://localhost/healthz"));
+    const body = (await response.json()) as HealthBody;
 
     expect(body.data.status).toBe("ok");
     expect(body.data.service).toBe("iadm-backend");
@@ -2462,10 +2463,8 @@ describe("GET /healthz", () => {
   });
 
   it("wraps the payload in the standard data envelope", async () => {
-    const response = await app.handle(
-      new Request("http://localhost/healthz"),
-    );
-    const body = await response.json();
+    const response = await app.handle(new Request("http://localhost/healthz"));
+    const body = (await response.json()) as HealthBody;
     expect(body).toHaveProperty("data");
     expect(body).not.toHaveProperty("error");
   });
@@ -2478,11 +2477,11 @@ Create `backend/tests/app.test.ts`:
 import { describe, expect, it } from "bun:test";
 import { app } from "@/app";
 
+type ErrorBody = { error: { code: string; message: string }; data?: unknown };
+
 describe("request id", () => {
   it("returns an x-request-id header on every response", async () => {
-    const response = await app.handle(
-      new Request("http://localhost/healthz"),
-    );
+    const response = await app.handle(new Request("http://localhost/healthz"));
     expect(response.headers.get("x-request-id")).toBeTruthy();
   });
 
@@ -2506,9 +2505,7 @@ describe("request id", () => {
 
 describe("security headers", () => {
   it("sets the baseline hardening headers", async () => {
-    const response = await app.handle(
-      new Request("http://localhost/healthz"),
-    );
+    const response = await app.handle(new Request("http://localhost/healthz"));
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(response.headers.get("x-frame-options")).toBe("DENY");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
@@ -2522,7 +2519,7 @@ describe("error handling", () => {
     );
     expect(response.status).toBe(404);
 
-    const body = await response.json();
+    const body = (await response.json()) as ErrorBody;
     expect(body.error.code).toBe("NOT_FOUND");
     expect(body.error.message).toBeDefined();
     expect(body).not.toHaveProperty("data");
@@ -2539,7 +2536,7 @@ describe("swagger", () => {
 });
 ```
 
-- [ ] **Step 2: Run them to verify they fail**
+- [x] **Step 2: Run them to verify they fail**
 
 ```bash
 cd backend && bun run test tests/app.test.ts
@@ -2547,7 +2544,7 @@ cd backend && bun run test tests/app.test.ts
 
 Expected: FAIL — cannot resolve `@/app`.
 
-- [ ] **Step 3: Write `backend/src/routes/health.routes.ts`**
+- [x] **Step 3: Write `backend/src/routes/health.routes.ts`**
 
 ```typescript
 import { Elysia } from "elysia";
@@ -2567,22 +2564,27 @@ export const healthRoutes = new Elysia().get("/", () => ({
 
 `/healthz` deliberately does not query the database. It answers "is this process alive", which must stay true and fast even when Postgres is down — a health check that fails on a database blip causes restart storms.
 
-- [ ] **Step 4: Write `backend/src/routes/index.ts`**
+- [x] **Step 4: Write `backend/src/routes/index.ts`**
+
+> **Ruling, 2026-10-15:** the original signature `setupRoutes(app: Elysia)` failed typecheck — a bare `Elysia` parameter rejects an instance that has `.derive()`d context. It is now generic over `AnyElysia`. The tests also cast `response.json()` (typed `unknown` by Bun) to a small body type; `any` is banned by lint.
 
 ```typescript
-import type { Elysia } from "elysia";
+import type { AnyElysia } from "elysia";
 import { healthRoutes } from "@/routes/health.routes";
 
 /**
  * Mounts every route group with its path prefix. Each new domain in later
  * phases adds exactly one line here.
+ *
+ * Generic so the caller's derived context (requestId, and later the
+ * authenticated user) survives into the returned type.
  */
-export function setupRoutes(app: Elysia) {
+export function setupRoutes<const App extends AnyElysia>(app: App) {
   return app.group("/healthz", (group) => group.use(healthRoutes));
 }
 ```
 
-- [ ] **Step 5: Write `backend/src/app.ts`**
+- [x] **Step 5: Write `backend/src/app.ts`**
 
 ```typescript
 import { Elysia } from "elysia";
@@ -2650,10 +2652,7 @@ const baseApp = new Elysia()
     } else {
       // Unexpected errors are bugs. Log the real message and stack here,
       // where it goes to our logs, never to the client.
-      logger.error(
-        { ...logPayload, err: error },
-        "unhandled error",
-      );
+      logger.error({ ...logPayload, err: error }, "unhandled error");
     }
 
     return body;
@@ -2698,7 +2697,7 @@ const baseApp = new Elysia()
 export const app = setupRoutes(baseApp);
 ```
 
-- [ ] **Step 6: Replace `backend/src/index.ts`**
+- [x] **Step 6: Replace `backend/src/index.ts`**
 
 ```typescript
 import { app } from "@/app";
@@ -2730,15 +2729,15 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 process.on("SIGTERM", () => void shutdown("SIGTERM"));
 ```
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 ```bash
 cd backend && bun run test tests/app.test.ts tests/routes/health.routes.test.ts
 ```
 
-Expected: PASS, 8 tests.
+Expected: PASS, 9 tests.
 
-- [ ] **Step 8: Start the server and verify by hand**
+- [x] **Step 8: Start the server and verify by hand**
 
 ```bash
 bun dev
@@ -2762,7 +2761,7 @@ open http://localhost:5000/swagger
 
 Expected: `{"error":{"code":"NOT_FOUND","message":"Route not found"}}` and the Swagger UI in a browser. Stop the server with Ctrl-C and confirm it logs `shutting down` rather than dying silently.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 cd .. && git status --short
